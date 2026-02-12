@@ -136,31 +136,25 @@ class ReadAreaWriter:
         try:
             # Build FINS write frame
             frame = build_memory_write_frame(
-                sa=self.settings.client_node,  # Source node
-                da=self.settings.plc_node,  # Destination node
-                memory_area=0x82,  # DM area
+                area="DM",
                 address=address,
-                words=words,
+                values=words,
+                client_node=self.settings.client_node,
+                plc_node=self.settings.plc_node,
+                sid=0x00,
             )
 
-            # Send via UDP
-            client = FinsUdpClient(
-                plc_ip=self.settings.plc_ip,
-                plc_port=self.settings.plc_port,
-                timeout=self.settings.plc_timeout_sec,
-            )
+            with FinsUdpClient(
+                ip=self.settings.plc_ip,
+                port=self.settings.plc_port,
+                timeout_sec=self.settings.plc_timeout_sec,
+            ) as client:
+                client.send_raw_hex(frame.hex())
+                response = client.recv()
 
-            response = client.send(frame)
-
-            # Parse response
-            result = parse_memory_write_response(response)
-
-            if result.get("success"):
-                logger.debug(f"Write success: D{address}, {len(words)} words")
-                return True
-            else:
-                logger.error(f"Write failed: {result.get('error', 'Unknown error')}")
-                return False
+            parse_memory_write_response(response.raw)
+            logger.debug(f"Write success: D{address}, {len(words)} words")
+            return True
 
         except Exception as e:
             logger.error(f"Error writing to PLC: {e}", exc_info=True)
