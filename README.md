@@ -643,6 +643,19 @@ Test ini melakukan:
 6. ✓ Re-sync untuk verify change detection
 7. ✓ Display summary
 
+---
+
+**📘 Detailed Testing Guide**
+
+Untuk dokumentasi lengkap testing, lihat **[TESTING_GUIDE.md](TESTING_GUIDE.md)**:
+- Memory area explanation (WRITE vs READ)
+- Field mapping reference
+- Expected results & verification
+- Troubleshooting common issues
+- Advanced testing scenarios
+
+---
+
 ### Write dari Odoo ke PLC
 
 Test complete workflow: Odoo → Database → PLC:
@@ -659,15 +672,32 @@ Workflow:
 
 ## 📖 Documentation
 
-Comprehensive documentation tersedia di [middleware.md](middleware.md):
+Comprehensive documentation tersedia:
 
-- Installation & Setup
-- Configuration Guide
-- API Endpoints Reference
-- Database Schema
-- PLC Integration Details
-- Troubleshooting Guide
-- Production Deployment
+### Main Documentation
+- **[middleware.md](middleware.md)** - Complete system documentation
+  - Installation & Setup
+  - Configuration Guide
+  - API Endpoints Reference
+  - Database Schema
+  - PLC Integration Details
+  - Troubleshooting Guide
+  - Production Deployment
+
+### Testing Documentation
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Comprehensive testing guide
+  - Understanding PLC Memory Areas
+  - Test Scripts Overview
+  - Step-by-step Testing Workflow
+  - Expected Results & Verification
+  - Troubleshooting Testing Issues
+  - Advanced Testing Scenarios
+
+**Quick Start Testing:**
+1. Populate PLC: `python test_write_read_area.py`
+2. Complete Test: `python test_complete_cycle.py`
+
+See [TESTING_GUIDE.md](TESTING_GUIDE.md) for detailed instructions.
 
 ## 🛠️ Tech Stack
 
