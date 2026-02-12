@@ -1,5 +1,5 @@
 """
-PLC API routes untuk write data ke PLC
+PLC API routes untuk read/write data ke PLC
 """
 import logging
 from decimal import Decimal
@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.tablesmo_batch import TableSmoBatch
 from app.services.plc_write_service import get_plc_write_service
+from app.services.plc_read_service import get_plc_read_service
+from app.services.plc_sync_service import get_plc_sync_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -161,6 +163,7 @@ async def write_mo_batch_to_plc(
             "mo_id": batch.mo_id,
             "consumption": float(consumption_val) if consumption_val is not None else 0.0,  # type: ignore
             "equipment_id_batch": batch.equipment_id_batch,
+            "finished_goods": batch.finished_goods,
             "status_manufacturing": batch.status_manufacturing or False,
             "status_operation": batch.status_operation or False,
             "actual_weight_quantity_finished_goods": (
@@ -221,3 +224,123 @@ async def get_plc_config() -> Any:
             "batches_loaded": len(service.mapping),
         },
     }
+
+
+@router.get("/plc/read-field/{field_name}")
+async def read_field_from_plc(field_name: str) -> Any:
+    """
+    Read single field dari PLC memory.
+    
+    Example:
+    GET /api/plc/read-field/NO-MO
+    """
+    try:
+        service = get_plc_read_service()
+        value = service.read_field(field_name)
+        
+        return {
+            "status": "success",
+            "message": f"Read {field_name} from PLC",
+            "data": {
+                "field_name": field_name,
+                "value": value,
+            },
+        }
+    except Exception as exc:
+        logger.exception("Error reading field from PLC: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read from PLC: {str(exc)}",
+        ) from exc
+
+
+@router.get("/plc/read-all")
+async def read_all_fields_from_plc() -> Any:
+    """
+    Read semua fields dari PLC memory.
+    
+    Returns all fields dari READ_DATA_PLC_MAPPING.json
+    """
+    try:
+        service = get_plc_read_service()
+        data = service.read_all_fields()
+        
+        return {
+            "status": "success",
+            "message": f"Read {len(data)} fields from PLC",
+            "data": data,
+        }
+    except Exception as exc:
+        logger.exception("Error reading all fields from PLC: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read from PLC: {str(exc)}",
+        ) from exc
+
+
+@router.get("/plc/read-batch")
+async def read_batch_from_plc() -> Any:
+    """
+    Read batch data dari PLC dan format sebagai structured data.
+    
+    Returns formatted batch data dengan silos, status, etc.
+    """
+    try:
+        service = get_plc_read_service()
+        batch_data = service.read_batch_data()
+        
+        return {
+            "status": "success",
+            "message": "Read batch data from PLC",
+            "data": batch_data,
+        }
+    except Exception as exc:
+        logger.exception("Error reading batch data from PLC: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read batch from PLC: {str(exc)}",
+        ) from exc
+
+
+@router.post("/plc/sync-from-plc")
+async def sync_data_from_plc() -> Any:
+    """
+    Read data dari PLC dan update mo_batch table berdasarkan MO_ID.
+    
+    Process:
+    1. Read all fields dari PLC
+    2. Extract MO_ID dari PLC data
+    3. Find corresponding mo_batch record
+    4. Update actual consumption fields jika ada perubahan
+    5. Update status dan weight fields
+    6. Update last_read_from_plc timestamp
+    
+    Returns sync result dengan informasi update status.
+    """
+    try:
+        service = get_plc_sync_service()
+        result = service.sync_from_plc()
+        
+        if result["success"]:
+            return {
+                "status": "success",
+                "message": result.get("message", "Sync completed"),
+                "data": {
+                    "mo_id": result.get("mo_id"),
+                    "updated": result.get("updated", False),
+                },
+            }
+        else:
+            raise HTTPException(
+                status_code=404 if "not found" in result.get("error", "").lower() else 500,
+                detail=result.get("error", "Sync failed"),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error syncing data from PLC: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to sync from PLC: {str(exc)}",
+        ) from exc
+

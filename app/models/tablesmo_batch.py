@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Column, Float, Integer, Numeric, String, text
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, Numeric, String, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -16,6 +18,7 @@ class TableSmoBatch(Base):
     mo_id = Column(String(64), nullable=False)
     consumption = Column(Numeric(18, 3), nullable=False)
     equipment_id_batch = Column(String(64), nullable=False)
+    finished_goods = Column(String(128), nullable=True)
 
     silo_a = Column(Integer, nullable=False, server_default="101")
     component_silo_a_name = Column(String(64), nullable=True)
@@ -60,4 +63,22 @@ class TableSmoBatch(Base):
     status_manufacturing = Column(Boolean, nullable=False, server_default="false")
     status_operation = Column(Boolean, nullable=False, server_default="false")
     actual_weight_quantity_finished_goods = Column(Numeric(18, 3), nullable=True)
+
+    # Actual consumption from PLC (read from READ_DATA_PLC_MAPPING)
+    actual_consumption_silo_a = Column(Float, nullable=True)
+    actual_consumption_silo_b = Column(Float, nullable=True)
+    actual_consumption_silo_c = Column(Float, nullable=True)
+    actual_consumption_silo_d = Column(Float, nullable=True)
+    actual_consumption_silo_e = Column(Float, nullable=True)
+    actual_consumption_silo_f = Column(Float, nullable=True)
+    actual_consumption_silo_g = Column(Float, nullable=True)
+    actual_consumption_silo_h = Column(Float, nullable=True)
+    actual_consumption_silo_i = Column(Float, nullable=True)
+    actual_consumption_silo_j = Column(Float, nullable=True)
+    actual_consumption_silo_k = Column(Float, nullable=True)
+    actual_consumption_silo_l = Column(Float, nullable=True)
+    actual_consumption_silo_m = Column(Float, nullable=True)
+
+    # Timestamp of last PLC read
+    last_read_from_plc = Column(DateTime(timezone=True), nullable=True)
 

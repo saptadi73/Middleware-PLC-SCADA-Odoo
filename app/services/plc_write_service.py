@@ -4,6 +4,7 @@ Menggunakan MASTER_BATCH_REFERENCE.json sebagai mapping memory PLC.
 """
 import json
 import logging
+import math
 import os
 import re
 import struct
@@ -69,6 +70,35 @@ class PLCWriteService:
             raise ValueError(f"Invalid DM range: {dm_str} (count={count})")
         
         return (start, count)
+
+    def _normalize_silo_number(self, raw_number: int) -> int:
+        if raw_number < 100:
+            return 100 + raw_number
+        return raw_number
+
+    def _build_silo_field_maps(self, batch_name: str) -> tuple[Dict[int, str], Dict[int, str]]:
+        id_fields: Dict[int, str] = {}
+        consumption_fields: Dict[int, str] = {}
+
+        for item in self.mapping.get(batch_name, []):
+            info = str(item.get("Informasi") or "")
+            info_upper = info.upper()
+            if "SILO" not in info_upper:
+                continue
+
+            match = re.search(r"SILO(?:\s+ID)?\s+(\d+)", info_upper)
+            if not match:
+                continue
+
+            raw_number = int(match.group(1))
+            silo_number = self._normalize_silo_number(raw_number)
+
+            if "CONSUMPTION" in info_upper:
+                consumption_fields[silo_number] = info
+            else:
+                id_fields[silo_number] = info
+
+        return id_fields, consumption_fields
     
     def _convert_to_words(self, value: Any, data_type: str, length: Optional[float] = None, scale: Optional[float] = None) -> List[int]:
         """
@@ -117,7 +147,10 @@ class PLCWriteService:
             
             # Calculate required words
             # Each word = 2 ASCII characters
-            expected_words = int(length) if length else (len(value) + 1) // 2
+            if length:
+                expected_words = int(math.ceil(float(length) / 2.0))
+            else:
+                expected_words = (len(value) + 1) // 2
             
             # Pad string to even length
             padded = value.ljust(expected_words * 2, "\x00")
@@ -267,34 +300,39 @@ class PLCWriteService:
         batch_name = f"BATCH{batch_number:02d}"
         
         # Build PLC write data
+        # Truncate strings to 16 chars for ASCII fields (8 words max)
+        mo_id = str(mo_batch_data.get("mo_id", ""))[:16]
+        finished_goods = str(mo_batch_data.get("finished_goods") or mo_batch_data.get("mo_id", ""))[:16]
+        
         plc_data = {
             "BATCH": batch_number,
-            "NO-MO": mo_batch_data.get("mo_id", ""),
-            "NO-BoM": mo_batch_data.get("mo_id", ""),  # Could be different field
-            "finished_goods": mo_batch_data.get("mo_id", ""),  # Product name if available
+            "NO-MO": mo_id,
+            "NO-BoM": finished_goods,
+            "finished_goods": finished_goods,
             "Quantity Goods_id": mo_batch_data.get("consumption", 0),
         }
         
         # Map silos (A-M -> 101-113)
+        silo_id_fields, consumption_fields = self._build_silo_field_maps(batch_name)
         silo_letters = "abcdefghijklm"
         for idx, letter in enumerate(silo_letters):
             silo_number = 101 + idx
-            
-            # Silo ID
-            silo_id_field = f"SILO ID {silo_number} (SILO BESAR)" if silo_number <= 103 else f"SILO ID {silo_number}"
-            silo_value = mo_batch_data.get(f"silo_{letter}", silo_number)
-            plc_data[silo_id_field] = silo_value
-            
-            # Silo Consumption
-            consumption_field = f"SILO {idx + 1} Consumption" if silo_number <= 101 else f"SILO ID {silo_number} Consumption"
-            consumption_value = mo_batch_data.get(f"consumption_silo_{letter}", 0)
-            
-            # Apply scale if consumption value exists
-            if consumption_value:
-                # Scale by 10 according to reference (scale: 10.0)
-                plc_data[consumption_field] = float(consumption_value)
+
+            # Silo ID field name from reference
+            silo_id_field = silo_id_fields.get(silo_number)
+            if silo_id_field:
+                silo_value = mo_batch_data.get(f"silo_{letter}", silo_number)
+                plc_data[silo_id_field] = silo_value
             else:
-                plc_data[consumption_field] = 0
+                logger.warning("Silo ID field not found for %s in %s", silo_number, batch_name)
+
+            # Silo Consumption field name from reference
+            consumption_field = consumption_fields.get(silo_number)
+            if consumption_field:
+                consumption_value = mo_batch_data.get(f"consumption_silo_{letter}", 0)
+                plc_data[consumption_field] = float(consumption_value) if consumption_value else 0
+            else:
+                logger.warning("Silo consumption field not found for %s in %s", silo_number, batch_name)
         
         # Status fields
         plc_data["status manufaturing"] = mo_batch_data.get("status_manufacturing", False)

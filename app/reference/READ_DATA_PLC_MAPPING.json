@@ -1,0 +1,675 @@
+{
+    "meta": {
+        "source_file": "read_data_plc.csv",
+        "total_points": 37,
+        "columns": [
+            "No",
+            "Informasi",
+            "Data Type",
+            "length",
+            "Sample",
+            "scale",
+            "DM - Memory"
+        ]
+    },
+    "raw_list": [
+        {
+            "No": 1,
+            "Informasi": "NO-MO",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "WH/MO/00002",
+            "DM - Memory": "D6001-6008"
+        },
+        {
+            "No": 2,
+            "Informasi": "NO-BoM",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "JF SUPER 2A 25",
+            "DM - Memory": "D6009-6016"
+        },
+        {
+            "No": 3,
+            "Informasi": "finished_goods",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "JF SUPER 2A 25",
+            "DM - Memory": "D6017-6024"
+        },
+        {
+            "No": 4,
+            "Informasi": "Quantity Goods_id",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20000",
+            "scale": 1.0,
+            "DM - Memory": "D6025"
+        },
+        {
+            "No": 5,
+            "Informasi": "SILO ID 101 (SILO BESAR)",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "101",
+            "scale": 1.0,
+            "DM - Memory": "D6026"
+        },
+        {
+            "No": 6,
+            "Informasi": "SILO 1 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "14415",
+            "scale": 10.0,
+            "DM - Memory": "D6027"
+        },
+        {
+            "No": 7,
+            "Informasi": "SILO ID 102 (SILO BESAR)",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "102",
+            "scale": 1.0,
+            "DM - Memory": "D6028"
+        },
+        {
+            "No": 8,
+            "Informasi": "SILO 2 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6029"
+        },
+        {
+            "No": 9,
+            "Informasi": "SILO ID 3 (SILO BESAR)",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "103",
+            "scale": 1.0,
+            "DM - Memory": "D6030"
+        },
+        {
+            "No": 10,
+            "Informasi": "SILO ID 103 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6031"
+        },
+        {
+            "No": 11,
+            "Informasi": "SILO ID 104",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "104",
+            "scale": 1.0,
+            "DM - Memory": "D6032"
+        },
+        {
+            "No": 12,
+            "Informasi": "SILO ID 104 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6033"
+        },
+        {
+            "No": 13,
+            "Informasi": "SILO ID 105",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "105",
+            "scale": 1.0,
+            "DM - Memory": "D6034"
+        },
+        {
+            "No": 14,
+            "Informasi": "SILO ID 105 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6035"
+        },
+        {
+            "No": 15,
+            "Informasi": "SILO ID 106",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "106",
+            "scale": 1.0,
+            "DM - Memory": "D6036"
+        },
+        {
+            "No": 16,
+            "Informasi": "SILO ID 106  Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6037"
+        },
+        {
+            "No": 17,
+            "Informasi": "SILO ID 107",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "107",
+            "scale": 1.0,
+            "DM - Memory": "D6038"
+        },
+        {
+            "No": 18,
+            "Informasi": "SILO ID 107 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6039"
+        },
+        {
+            "No": 19,
+            "Informasi": "SILO ID 108",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "108",
+            "scale": 1.0,
+            "DM - Memory": "D6040"
+        },
+        {
+            "No": 20,
+            "Informasi": "SILO 108 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6041"
+        },
+        {
+            "No": 21,
+            "Informasi": "SILO ID 109",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "109",
+            "scale": 1.0,
+            "DM - Memory": "D6042"
+        },
+        {
+            "No": 22,
+            "Informasi": "SILO ID 109 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6043"
+        },
+        {
+            "No": 23,
+            "Informasi": "SILO ID 110",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "110",
+            "scale": 1.0,
+            "DM - Memory": "D6044"
+        },
+        {
+            "No": 24,
+            "Informasi": "SILO ID 110 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6045"
+        },
+        {
+            "No": 25,
+            "Informasi": "SILO ID 111",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "111",
+            "scale": 1.0,
+            "DM - Memory": "D6046"
+        },
+        {
+            "No": 26,
+            "Informasi": "SILO ID 111 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6047"
+        },
+        {
+            "No": 27,
+            "Informasi": "SILO ID 112",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "112",
+            "scale": 1.0,
+            "DM - Memory": "D6048"
+        },
+        {
+            "No": 28,
+            "Informasi": "SILO ID 112 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6049"
+        },
+        {
+            "No": 29,
+            "Informasi": "SILO ID 113",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "113",
+            "scale": 1.0,
+            "DM - Memory": "D6050"
+        },
+        {
+            "No": 30,
+            "Informasi": "SILO ID 113 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6051"
+        },
+        {
+            "No": 31,
+            "Informasi": "SILO ID 114",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "114",
+            "scale": 1.0,
+            "DM - Memory": "D6052"
+        },
+        {
+            "No": 32,
+            "Informasi": "SILO ID 114 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6053"
+        },
+        {
+            "No": 33,
+            "Informasi": "SILO ID 115",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "115",
+            "scale": 1.0,
+            "DM - Memory": "D6054"
+        },
+        {
+            "No": 34,
+            "Informasi": "SILO ID 115 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6055"
+        },
+        {
+            "No": 35,
+            "Informasi": "status manufaturing",
+            "Data Type": "boolean",
+            "length": 1,
+            "Sample": "1=start,0=stop",
+            "DM - Memory": "D6056"
+        },
+        {
+            "No": 36,
+            "Informasi": "Status Operation",
+            "Data Type": "boolean",
+            "length": 1,
+            "Sample": "1:=run, 0=failed",
+            "DM - Memory": "D6057"
+        },
+        {
+            "No": 37,
+            "Informasi": "weight_finished_good",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20000",
+            "scale": 1.0,
+            "DM - Memory": "D6058"
+        }
+    ],
+    "mapping_by_address": {
+        "D6001-6008": {
+            "No": 1,
+            "Informasi": "NO-MO",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "WH/MO/00002",
+            "DM - Memory": "D6001-6008"
+        },
+        "D6009-6016": {
+            "No": 2,
+            "Informasi": "NO-BoM",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "JF SUPER 2A 25",
+            "DM - Memory": "D6009-6016"
+        },
+        "D6017-6024": {
+            "No": 3,
+            "Informasi": "finished_goods",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "JF SUPER 2A 25",
+            "DM - Memory": "D6017-6024"
+        },
+        "D6025": {
+            "No": 4,
+            "Informasi": "Quantity Goods_id",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20000",
+            "scale": 1.0,
+            "DM - Memory": "D6025"
+        },
+        "D6026": {
+            "No": 5,
+            "Informasi": "SILO ID 101 (SILO BESAR)",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "101",
+            "scale": 1.0,
+            "DM - Memory": "D6026"
+        },
+        "D6027": {
+            "No": 6,
+            "Informasi": "SILO 1 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "14415",
+            "scale": 10.0,
+            "DM - Memory": "D6027"
+        },
+        "D6028": {
+            "No": 7,
+            "Informasi": "SILO ID 102 (SILO BESAR)",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "102",
+            "scale": 1.0,
+            "DM - Memory": "D6028"
+        },
+        "D6029": {
+            "No": 8,
+            "Informasi": "SILO 2 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6029"
+        },
+        "D6030": {
+            "No": 9,
+            "Informasi": "SILO ID 3 (SILO BESAR)",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "103",
+            "scale": 1.0,
+            "DM - Memory": "D6030"
+        },
+        "D6031": {
+            "No": 10,
+            "Informasi": "SILO ID 103 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6031"
+        },
+        "D6032": {
+            "No": 11,
+            "Informasi": "SILO ID 104",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "104",
+            "scale": 1.0,
+            "DM - Memory": "D6032"
+        },
+        "D6033": {
+            "No": 12,
+            "Informasi": "SILO ID 104 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6033"
+        },
+        "D6034": {
+            "No": 13,
+            "Informasi": "SILO ID 105",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "105",
+            "scale": 1.0,
+            "DM - Memory": "D6034"
+        },
+        "D6035": {
+            "No": 14,
+            "Informasi": "SILO ID 105 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6035"
+        },
+        "D6036": {
+            "No": 15,
+            "Informasi": "SILO ID 106",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "106",
+            "scale": 1.0,
+            "DM - Memory": "D6036"
+        },
+        "D6037": {
+            "No": 16,
+            "Informasi": "SILO ID 106  Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6037"
+        },
+        "D6038": {
+            "No": 17,
+            "Informasi": "SILO ID 107",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "107",
+            "scale": 1.0,
+            "DM - Memory": "D6038"
+        },
+        "D6039": {
+            "No": 18,
+            "Informasi": "SILO ID 107 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6039"
+        },
+        "D6040": {
+            "No": 19,
+            "Informasi": "SILO ID 108",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "108",
+            "scale": 1.0,
+            "DM - Memory": "D6040"
+        },
+        "D6041": {
+            "No": 20,
+            "Informasi": "SILO 108 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6041"
+        },
+        "D6042": {
+            "No": 21,
+            "Informasi": "SILO ID 109",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "109",
+            "scale": 1.0,
+            "DM - Memory": "D6042"
+        },
+        "D6043": {
+            "No": 22,
+            "Informasi": "SILO ID 109 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6043"
+        },
+        "D6044": {
+            "No": 23,
+            "Informasi": "SILO ID 110",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "110",
+            "scale": 1.0,
+            "DM - Memory": "D6044"
+        },
+        "D6045": {
+            "No": 24,
+            "Informasi": "SILO ID 110 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6045"
+        },
+        "D6046": {
+            "No": 25,
+            "Informasi": "SILO ID 111",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "111",
+            "scale": 1.0,
+            "DM - Memory": "D6046"
+        },
+        "D6047": {
+            "No": 26,
+            "Informasi": "SILO ID 111 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6047"
+        },
+        "D6048": {
+            "No": 27,
+            "Informasi": "SILO ID 112",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "112",
+            "scale": 1.0,
+            "DM - Memory": "D6048"
+        },
+        "D6049": {
+            "No": 28,
+            "Informasi": "SILO ID 112 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6049"
+        },
+        "D6050": {
+            "No": 29,
+            "Informasi": "SILO ID 113",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "113",
+            "scale": 1.0,
+            "DM - Memory": "D6050"
+        },
+        "D6051": {
+            "No": 30,
+            "Informasi": "SILO ID 113 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6051"
+        },
+        "D6052": {
+            "No": 31,
+            "Informasi": "SILO ID 114",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "114",
+            "scale": 1.0,
+            "DM - Memory": "D6052"
+        },
+        "D6053": {
+            "No": 32,
+            "Informasi": "SILO ID 114 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6053"
+        },
+        "D6054": {
+            "No": 33,
+            "Informasi": "SILO ID 115",
+            "Data Type": "REAL",
+            "length": 3,
+            "Sample": "115",
+            "scale": 1.0,
+            "DM - Memory": "D6054"
+        },
+        "D6055": {
+            "No": 34,
+            "Informasi": "SILO ID 115 Consumption",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20045",
+            "scale": 10.0,
+            "DM - Memory": "D6055"
+        },
+        "D6056": {
+            "No": 35,
+            "Informasi": "status manufaturing",
+            "Data Type": "boolean",
+            "length": 1,
+            "Sample": "1=start,0=stop",
+            "DM - Memory": "D6056"
+        },
+        "D6057": {
+            "No": 36,
+            "Informasi": "Status Operation",
+            "Data Type": "boolean",
+            "length": 1,
+            "Sample": "1:=run, 0=failed",
+            "DM - Memory": "D6057"
+        },
+        "D6058": {
+            "No": 37,
+            "Informasi": "weight_finished_good",
+            "Data Type": "REAL",
+            "length": 5,
+            "Sample": "20000",
+            "scale": 1.0,
+            "DM - Memory": "D6058"
+        }
+    }
+}

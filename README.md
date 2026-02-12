@@ -5,10 +5,16 @@ Middleware untuk integrasi SCADA PLC (Omron SYMAC CJ2M CPU31) dengan Odoo 14 men
 ## 🚀 Features
 
 - **Auto-Sync Scheduler**: Fetch MO dari Odoo secara otomatis dengan smart-wait logic
-- **PLC Write Service**: Write data ke PLC menggunakan FINS/UDP protocol
-- **Memory Mapping**: MASTER_BATCH_REFERENCE.json sebagai referensi alamat memory PLC
+- **Bidirectional PLC Communication**: 
+  - **Write**: Send MO data ke PLC menggunakan FINS/UDP protocol
+  - **Read**: Ambil actual consumption dan status dari PLC
+  - **Sync**: Update database dengan data real-time dari PLC
+- **Memory Mapping**: 
+  - MASTER_BATCH_REFERENCE.json untuk write operations (D7000-D7418)
+  - READ_DATA_PLC_MAPPING.json untuk read operations (D6001-D6058)
+- **Smart Update**: Change detection - hanya update jika data berubah
 - **JSON-RPC Client**: Komunikasi dengan Odoo menggunakan XML-RPC over JSON
-- **Database Storage**: PostgreSQL untuk menyimpan MO batch data
+- **Database Storage**: PostgreSQL dengan tracking actual consumption per silo
 - **RESTful API**: FastAPI endpoints untuk CRUD operations
 
 ## 📋 Prerequisites
@@ -188,7 +194,125 @@ Response:
 }
 ```
 
-## 🔄 Auto-Sync Scheduler
+## � PLC Read API Usage
+
+### 1. Read Single Field
+
+Read satu field dari PLC:
+
+```bash
+curl http://localhost:8000/api/plc/read-field/NO-MO
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "Read NO-MO from PLC",
+  "data": {
+    "field_name": "NO-MO",
+    "value": "WH/MO/00002"
+  }
+}
+```
+
+### 2. Read Quantity Field
+
+```bash
+curl "http://localhost:8000/api/plc/read-field/Quantity%20Goods_id"
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "Read Quantity Goods_id from PLC",
+  "data": {
+    "field_name": "Quantity Goods_id",
+    "value": 2500.0
+  }
+}
+```
+
+### 3. Read Silo Consumption (dengan scale)
+
+```bash
+curl "http://localhost:8000/api/plc/read-field/SILO%201%20Consumption"
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "Read SILO 1 Consumption from PLC",
+  "data": {
+    "field_name": "SILO 1 Consumption",
+    "value": 825.0
+  }
+}
+```
+
+**Note**: Scale factor (10.0) otomatis diterapkan untuk REAL values.
+
+### 4. Read All Fields
+
+Read semua field sekaligus:
+
+```bash
+curl http://localhost:8000/api/plc/read-all
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "Read 37 fields from PLC",
+  "data": {
+    "NO-MO": "WH/MO/00002",
+    "NO-BoM": "JF PLUS 25",
+    "finished_goods": "JF PLUS 25",
+    "Quantity Goods_id": 2500.0,
+    "SILO ID 101 (SILO BESAR)": 101,
+    "SILO 1 Consumption": 825.0,
+    ...
+  }
+}
+```
+
+### 5. Read Formatted Batch Data
+
+Read data batch dengan format terstruktur:
+
+```bash
+curl http://localhost:8000/api/plc/read-batch
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "Read batch data from PLC",
+  "data": {
+    "mo_id": "WH/MO/00002",
+    "product_name": "JF PLUS 25",
+    "bom_name": "JF PLUS 25",
+    "quantity": 2500.0,
+    "silos": {
+      "a": {"id": 101, "consumption": 825.0},
+      "b": {"id": 102, "consumption": 375.0},
+      "c": {"id": 103, "consumption": 240.25},
+      ...
+    },
+    "status": {
+      "manufacturing": false,
+      "operation": false
+    },
+    "weight_finished_good": 0.0
+  }
+}
+```
+
+## �🔄 Auto-Sync Scheduler
 
 Auto-sync scheduler fetch MO dari Odoo setiap interval tertentu dengan smart-wait logic:
 
@@ -214,7 +338,127 @@ curl -X POST http://localhost:8000/api/sync/trigger-sync
 curl -X DELETE http://localhost:8000/api/sync/clear-mo-batch
 ```
 
-## 📚 MASTER_BATCH_REFERENCE.json
+## � PLC Sync API - Bidirectional Communication
+
+PLC Sync Service membaca data dari PLC dan update database berdasarkan MO_ID.
+
+### How It Works
+
+1. **Read from PLC**: Menggunakan `READ_DATA_PLC_MAPPING.json` untuk membaca 37 fields
+2. **Extract MO_ID**: Mendapatkan NO-MO dari PLC (contoh: "WH/MO/00002")
+3. **Find Record**: Cari mo_batch berdasarkan MO_ID
+4. **Smart Update**: Hanya update fields yang berubah
+5. **Timestamp**: Set `last_read_from_plc` dengan waktu sinkronisasi
+
+### Fields yang Diupdate
+
+**Actual Consumption (13 silos):**
+- `actual_consumption_silo_a` - SILO 1 Consumption (D6027)
+- `actual_consumption_silo_b` - SILO 2 Consumption (D6029)
+- `actual_consumption_silo_c` - SILO ID 103 Consumption (D6031)
+- ... hingga `actual_consumption_silo_m` (D6051)
+
+**Status & Weight:**
+- `actual_weight_quantity_finished_goods` - weight_finished_good (D6058)
+- `status_manufacturing` - status manufaturing (D6056)
+- `status_operation` - Status Operation (D6057)
+
+**Metadata:**
+- `last_read_from_plc` - Timestamp saat terakhir dibaca
+
+### Sync from PLC
+
+```bash
+curl -X POST http://localhost:8000/api/plc/sync-from-plc
+```
+
+Response (data berubah):
+```json
+{
+  "status": "success",
+  "message": "Batch data updated successfully",
+  "data": {
+    "mo_id": "WH/MO/00002",
+    "updated": true
+  }
+}
+```
+
+Response (data tidak berubah):
+```json
+{
+  "status": "success",
+  "message": "No changes detected, skip update",
+  "data": {
+    "mo_id": "WH/MO/00002",
+    "updated": false
+  }
+}
+```
+
+### Use Case: Periodic Monitoring
+
+PLC Sync ideal untuk:
+- **Real-time monitoring**: Cek actual consumption vs planned
+- **Production tracking**: Monitor status manufacturing/operation
+- **Quality control**: Verifikasi actual weight vs target
+- **Data validation**: Bandingkan data PLC dengan database
+
+**Example Workflow:**
+```bash
+# 1. Write MO to PLC
+curl -X POST http://localhost:8000/api/plc/write-mo-batch \
+  -H "Content-Type: application/json" \
+  -d '{"batch_no": 1, "plc_batch_slot": 1}'
+
+# 2. PLC runs manufacturing process...
+# (actual consumption data updates in PLC)
+
+# 3. Sync actual data back to database
+curl -X POST http://localhost:8000/api/plc/sync-from-plc
+
+# 4. Check updated data in database
+# actual_consumption_silo_* now contains real values from PLC
+```
+## 🗺️ PLC Memory Areas
+
+Sistem menggunakan dua area memory PLC yang berbeda:
+
+### **WRITE Area (D7000-D7418)** - Production Commands
+- **Purpose**: Send manufacturing orders dari Middleware → PLC
+- **Mapping**: MASTER_BATCH_REFERENCE.json
+- **Batches**: 30 slots (BATCH01-BATCH30)
+- **Fields per Batch**: 37 fields (MO, product, silos, status)
+- **Use Case**: Write MO dari Odoo/Database ke PLC untuk production
+
+### **READ Area (D6001-D6058)** - Production Feedback
+- **Purpose**: Read actual data dari PLC → Middleware
+- **Mapping**: READ_DATA_PLC_MAPPING.json
+- **Fields**: 37 fields (current MO, actual consumption, status)
+- **Use Case**: Monitor production progress, actual consumption, equipment status
+
+### **Memory Addressing**
+```
+┌─────────────────────────────────────────────────┐
+│  D6001-D6058  │ READ Area (Current Production)  │
+│               │ - Actual consumption            │
+│               │ - Real-time status              │
+│               │ - Weight finished goods         │
+├───────────────┴─────────────────────────────────┤
+│                                                  │
+│  D7000-D7418  │ WRITE Area (30 Batch Slots)    │
+│               │ - MO queue                      │
+│               │ - Planned consumption           │
+│               │ - Production parameters         │
+└──────────────────────────────────────────────────┘
+```
+
+**Workflow:**
+1. **WRITE**: Middleware send MO → D7000-D7418 (queue of 30 batches)
+2. **PLC Process**: PLC execute production, update D6001-D6058
+3. **READ**: Middleware read D6001-D6058 → actual consumption
+4. **SYNC**: Update database dengan actual values
+## �📚 MASTER_BATCH_REFERENCE.json
 
 Memory mapping reference untuk PLC communication:
 
@@ -245,7 +489,56 @@ Memory mapping reference untuk PLC communication:
 - **Data Types**: REAL, ASCII, boolean
 - **Addressing**: Single (D7000) or Range (D7001-7008)
 
+## 📖 READ_DATA_PLC_MAPPING.json
+
+Memory mapping reference untuk PLC read operations:
+
+```json
+{
+  "meta": {
+    "total_points": 37,
+    "address_range": "D6001-D6058"
+  },
+  "raw_list": [
+    {
+      "No": 1,
+      "Informasi": "NO-MO",
+      "Data Type": "ASCII",
+      "length": 16,
+      "DM - Memory": "D6001-6008"
+    },
+    {
+      "No": 6,
+      "Informasi": "SILO 1 Consumption",
+      "Data Type": "REAL",
+      "scale": 10.0,
+      "DM - Memory": "D6027"
+    },
+    ...
+  ]
+}
+```
+
+**Structure:**
+- **37 Fields**: NO-MO, finished_goods, quantity, 13 silos (ID + consumption), status
+- **Address Range**: D6001 - D6058
+- **Data Types**: ASCII, REAL (with scale factor), boolean
+- **Scale Factors**: 
+  - Consumption: 10.0 (nilai PLC 8250 = 825.0 kg)
+  - Quantity: 1.0 (no scaling)
+
+**Field Mapping:**
+- D6001-6008: NO-MO (ASCII, 16 chars)
+- D6017-6024: finished_goods (ASCII, 16 chars)
+- D6025: Quantity Goods_id (REAL, scale=1.0)
+- D6027, D6029, D6031, ..., D6051: Silo Consumptions (REAL, scale=10.0)
+- D6056: status manufaturing (boolean)
+- D6057: Status Operation (boolean)
+- D6058: weight_finished_good (REAL, scale=1.0)
+
 ## 🧪 Testing
+
+### PLC Write Tests
 
 Run test script untuk validate PLC write service:
 
@@ -259,6 +552,110 @@ Test coverage:
 3. ✓ Write ASCII field
 4. ✓ Write multiple fields
 5. ✓ Write MO batch from database
+
+### PLC Read Tests
+
+Run test script untuk validate PLC read service:
+
+```bash
+# Test via HTTP API
+python test_plc_read.py
+
+# Test direct (tanpa HTTP)
+python test_plc_read_direct.py
+```
+
+Test coverage:
+1. ✓ Read single field (ASCII)
+2. ✓ Read single field (REAL with scale)
+3. ✓ Read all fields
+4. ✓ Read formatted batch data
+
+### PLC Sync Tests
+
+Test PLC data synchronization ke database:
+
+```bash
+# Test sync only
+python test_plc_sync.py
+
+# Test full workflow: Write → Read → Sync
+python test_plc_workflow.py
+```
+
+Test `test_plc_workflow.py` melakukan:
+1. ✓ Write MO batch dari database ke PLC
+2. ✓ Read batch data dari PLC
+3. ✓ Sync data PLC ke database (update actual consumption)
+4. ✓ Verify change detection (no update jika data sama)
+
+Fitur PLC Sync:
+- Update `actual_consumption_silo_a` s/d `actual_consumption_silo_m` dari PLC
+- Update `actual_weight_quantity_finished_goods` dari field `weight_finished_good`
+- Update `status_manufacturing` dan `status_operation`
+- Set `last_read_from_plc` timestamp
+- **Smart update**: Hanya update jika ada perubahan data
+
+### Write to READ Area (Testing Helper)
+
+Script khusus untuk simulasi data PLC pada READ area (D6001-D6058):
+
+```bash
+python test_write_read_area.py
+```
+
+Workflow:
+1. ✓ Read batch_no=1 dari database
+2. ✓ Write data ke PLC READ area (D6001-D6058)
+3. ✓ Menggunakan mapping dari READ_DATA_PLC_MAPPING.json
+
+**Use Case:**
+- Testing read & sync functionality tanpa PLC real
+- Simulasi data PLC untuk development
+- Verify mapping field antara database ↔ PLC
+
+**Next Steps setelah write:**
+```bash
+# Read data dari PLC
+python test_plc_read.py
+
+# Sync ke database
+python test_plc_sync.py
+
+# Or run complete cycle test
+python test_complete_cycle.py
+```
+
+**Complete Cycle Test:**
+
+Test lengkap yang verify seluruh flow:
+
+```bash
+python test_complete_cycle.py
+```
+
+Test ini melakukan:
+1. ✓ Read MO_ID dari PLC (D6001-6008)
+2. ✓ Read product & quantity
+3. ✓ Read silo consumptions
+4. ✓ Read complete batch data
+5. ✓ Sync ke database (update actual_consumption_*)
+6. ✓ Re-sync untuk verify change detection
+7. ✓ Display summary
+
+### Write dari Odoo ke PLC
+
+Test complete workflow: Odoo → Database → PLC:
+
+```bash
+python test_plc_write_from_odoo.py
+```
+
+Workflow:
+1. Clear mo_batch table
+2. Fetch MO list dari Odoo (7 MO)
+3. Map MO data to PLC format
+4. Write to PLC slots BATCH01-BATCH07
 
 ## 📖 Documentation
 
@@ -350,10 +747,21 @@ curl http://localhost:8070/web/database/list
 
 ### PLC Operations
 
-- `GET /api/plc/config` - Get PLC configuration
+**Write Operations:**
 - `POST /api/plc/write-field` - Write single field
 - `POST /api/plc/write-batch` - Write multiple fields
 - `POST /api/plc/write-mo-batch` - Write MO from database
+
+**Read Operations:**
+- `GET /api/plc/read-field/{field_name}` - Read single field
+- `GET /api/plc/read-all` - Read all fields
+- `GET /api/plc/read-batch` - Read formatted batch data
+
+**Sync Operations:**
+- `POST /api/plc/sync-from-plc` - Read from PLC and update database based on MO_ID
+
+**Configuration:**
+- `GET /api/plc/config` - Get PLC configuration
 
 ### Auto-Sync Operations
 
@@ -375,6 +783,7 @@ FastAPI SCADA-Odoo Integration Team
 
 ---
 
-**System Status**: ✨ PLC Write Service Implemented & Ready for Testing
-#   M i d d l e w a r e - P L C - S C A D A - O d o o  
+**System Status**: ✨ Bidirectional PLC Communication - Read/Write/Sync Fully Implemented
+#   M i d d l e w a r e - P L C - S C A D A - O d o o 
+ 
  

@@ -77,6 +77,7 @@ def _upsert_batch(db: Session, mo_data: Dict[str, Any], batch_no: int) -> TableS
     batch.batch_no = batch_no  # type: ignore[assignment]
     batch.consumption = float(mo_data.get("quantity") or 0)  # type: ignore[assignment]
     batch.equipment_id_batch = str(equipment.get("code") or "")  # type: ignore[assignment]
+    batch.finished_goods = str(mo_data.get("product_name") or "")  # type: ignore[assignment]
 
     for letter in _SILO_NUMBER_TO_LETTER.values():
         setattr(batch, f"component_silo_{letter}_name", None)
