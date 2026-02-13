@@ -276,42 +276,6 @@
             "DM": "D7051"
         },
         {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7052"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7053"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7054"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7055"
-        },
-        {
             "No": 35,
             "Informasi": "status manufaturing",
             "Data Type": "boolean",
@@ -612,42 +576,6 @@
             "Sample": "20045",
             "scale": 10.0,
             "DM": "D7111"
-        },
-        {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7112"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7113"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7114"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7115"
         },
         {
             "No": 35,
@@ -952,42 +880,6 @@
             "DM": "D7171"
         },
         {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7172"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7173"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7174"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7175"
-        },
-        {
             "No": 35,
             "Informasi": "status manufaturing",
             "Data Type": "boolean",
@@ -1288,42 +1180,6 @@
             "Sample": "20045",
             "scale": 10.0,
             "DM": "D7231"
-        },
-        {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7232"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7233"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7234"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7235"
         },
         {
             "No": 35,
@@ -1628,42 +1484,6 @@
             "DM": "D7291"
         },
         {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7292"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7293"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7294"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7295"
-        },
-        {
             "No": 35,
             "Informasi": "status manufaturing",
             "Data Type": "boolean",
@@ -1964,42 +1784,6 @@
             "Sample": "20045",
             "scale": 10.0,
             "DM": "D7351"
-        },
-        {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7352"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7353"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7354"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7355"
         },
         {
             "No": 35,
@@ -2304,42 +2088,6 @@
             "DM": "D7411"
         },
         {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7412"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7413"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7414"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7415"
-        },
-        {
             "No": 35,
             "Informasi": "status manufaturing",
             "Data Type": "boolean",
@@ -2640,42 +2388,6 @@
             "Sample": "20045",
             "scale": 10.0,
             "DM": "D7471"
-        },
-        {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7472"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7473"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7474"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7475"
         },
         {
             "No": 35,
@@ -2980,42 +2692,6 @@
             "DM": "D7531"
         },
         {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7532"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7533"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7534"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7535"
-        },
-        {
             "No": 35,
             "Informasi": "status manufaturing",
             "Data Type": "boolean",
@@ -3316,42 +2992,6 @@
             "Sample": "20045",
             "scale": 10.0,
             "DM": "D7591"
-        },
-        {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM": "D7592"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7593"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3.0,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM": "D7594"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5.0,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM": "D7595"
         },
         {
             "No": 35,

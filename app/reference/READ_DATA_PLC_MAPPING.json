@@ -1,7 +1,7 @@
 {
     "meta": {
         "source_file": "read_data_plc.csv",
-        "total_points": 37,
+        "total_points": 33,
         "columns": [
             "No",
             "Informasi",
@@ -279,42 +279,6 @@
             "Sample": "20045",
             "scale": 10.0,
             "DM - Memory": "D6051"
-        },
-        {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM - Memory": "D6052"
-        },
-        {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM - Memory": "D6053"
-        },
-        {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM - Memory": "D6054"
-        },
-        {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM - Memory": "D6055"
         },
         {
             "No": 35,
@@ -609,42 +573,6 @@
             "Sample": "20045",
             "scale": 10.0,
             "DM - Memory": "D6051"
-        },
-        "D6052": {
-            "No": 31,
-            "Informasi": "SILO ID 114",
-            "Data Type": "REAL",
-            "length": 3,
-            "Sample": "114",
-            "scale": 1.0,
-            "DM - Memory": "D6052"
-        },
-        "D6053": {
-            "No": 32,
-            "Informasi": "SILO ID 114 Consumption",
-            "Data Type": "REAL",
-            "length": 5,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM - Memory": "D6053"
-        },
-        "D6054": {
-            "No": 33,
-            "Informasi": "SILO ID 115",
-            "Data Type": "REAL",
-            "length": 3,
-            "Sample": "115",
-            "scale": 1.0,
-            "DM - Memory": "D6054"
-        },
-        "D6055": {
-            "No": 34,
-            "Informasi": "SILO ID 115 Consumption",
-            "Data Type": "REAL",
-            "length": 5,
-            "Sample": "20045",
-            "scale": 10.0,
-            "DM - Memory": "D6055"
         },
         "D6056": {
             "No": 35,

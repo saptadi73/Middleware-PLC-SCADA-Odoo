@@ -222,7 +222,7 @@ TEST WRITE TO READ_DATA_PLC_MAPPING AREA (D6001-D6058)
 ================================================================================
 WRITE RESULTS
 ================================================================================
-✓ Success: 34 fields
+✓ Success: 33 fields
 ✗ Failed: 0 fields
 ```
 
@@ -302,7 +302,7 @@ python test_plc_read.py
    (PLC value: 8255, scale: 10.0)
 
 [5] Read All Fields
-✓ Total fields: 37
+✓ Total fields: 33
 ✓ Sample fields:
    NO-MO: WH/MO/00002
    finished_goods: JF SUPER 2A 25

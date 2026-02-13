@@ -1,5 +1,5 @@
 No,Informasi,Data Type,length,Sample,scale,DM - Memory,Value
-1,NO-MO,ASCII,16,WH/MO/00002,,D6001-6008,WH/MO/00002
+1,NO-MO,ASCII,16,WH/MO/00003,,D6001-6008,WH/MO/00003
 2,NO-BoM,ASCII,16,JF SUPER 2A 25,,D6009-6016,JF SUPER 2A 25
 3,finished_goods,ASCII,16,JF SUPER 2A 25,,D6017-6024,JF SUPER 2A 25
 4,Quantity Goods_id,REAL,5,20000,1.0,D6025,20000
@@ -33,6 +33,6 @@ No,Informasi,Data Type,length,Sample,scale,DM - Memory,Value
 32,SILO ID 114 Consumption,REAL,5,20045,10.0,D6053,2004.5
 33,SILO ID 115,REAL,3,115,1.0,D6054,115
 34,SILO ID 115 Consumption,REAL,5,20045,10.0,D6055,2004.5
-35,status manufaturing,boolean,1,"1=start,0=stop",,D6056,1
-36,Status Operation,boolean,1,"1:=run, 0=failed",,D6057,1
+35,status manufaturing,boolean,1,1,,D6056,1
+36,Status Operation,boolean,1,1,,D6057,1
 37,weight_finished_good,REAL,5,20000,1.0,D6058,20000
