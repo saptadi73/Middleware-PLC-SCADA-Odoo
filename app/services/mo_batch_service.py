@@ -1,9 +1,21 @@
 import re
-from typing import Any, Dict, Iterable, Optional
+from decimal import Decimal
+from typing import Any, Dict, Iterable, List, Optional, Union, cast
 
 from sqlalchemy.orm import Session
 
 from app.models.tablesmo_batch import TableSmoBatch
+from app.models.tablesmo_history import TableSmoHistory
+from app.services.plc_write_service import get_plc_write_service
+
+
+NumericValue = Union[Decimal, float, int]
+
+
+def _to_float(value: Optional[NumericValue]) -> float:
+    if value is None:
+        return 0.0
+    return float(value)
 
 
 _SILO_NUMBER_TO_LETTER = {
@@ -97,3 +109,99 @@ def sync_mo_list_to_db(db: Session, mo_list: Iterable[Dict[str, Any]]) -> int:
 
     db.commit()
     return count
+
+
+def clear_mo_batch_table(db: Session) -> int:
+    deleted_count = db.query(TableSmoBatch).count()
+    if deleted_count == 0:
+        return 0
+
+    db.query(TableSmoBatch).delete()
+    db.commit()
+    return deleted_count
+
+
+def is_mo_batch_empty(db: Session) -> bool:
+    return db.query(TableSmoBatch).count() == 0
+
+
+def write_mo_batch_queue_to_plc(
+    db: Session,
+    start_slot: int = 1,
+    limit: int = 30,
+) -> int:
+    if start_slot < 1 or start_slot > 30:
+        raise ValueError(f"start_slot must be 1-30, got {start_slot}")
+
+    if limit < 1:
+        return 0
+
+    batches = (
+        db.query(TableSmoBatch)
+        .order_by(TableSmoBatch.batch_no)
+        .limit(limit)
+        .all()
+    )
+
+    plc_service = get_plc_write_service()
+    written = 0
+    plc_slot = start_slot
+    for batch in batches:
+        if plc_slot > 30:
+            break
+
+        consumption_val = cast(Optional[NumericValue], batch.consumption)
+        actual_weight_val = cast(
+            Optional[NumericValue], batch.actual_weight_quantity_finished_goods
+        )
+
+        batch_data = {
+            "mo_id": batch.mo_id,
+            "consumption": _to_float(consumption_val),
+            "equipment_id_batch": batch.equipment_id_batch,
+            "finished_goods": batch.finished_goods,
+            "status_manufacturing": bool(batch.status_manufacturing),
+            "status_operation": bool(batch.status_operation),
+            "actual_weight_quantity_finished_goods": (
+                _to_float(actual_weight_val)
+            ),
+        }
+
+        for letter in "abcdefghijklm":
+            batch_data[f"silo_{letter}"] = getattr(batch, f"silo_{letter}", None)
+            batch_data[f"component_silo_{letter}_name"] = getattr(
+                batch, f"component_silo_{letter}_name", None
+            )
+            batch_data[f"consumption_silo_{letter}"] = getattr(
+                batch, f"consumption_silo_{letter}", None
+            )
+
+        plc_service.write_mo_batch_to_plc(batch_data, batch_number=plc_slot)
+        written += 1
+        plc_slot += 1
+
+    return written
+
+
+def move_finished_batches_to_history(db: Session) -> int:
+    finished_batches: List[TableSmoBatch] = (
+        db.query(TableSmoBatch)
+        .filter(TableSmoBatch.status_manufacturing.is_(True))
+        .all()
+    )
+
+    if not finished_batches:
+        return 0
+
+    history_columns = [column.name for column in TableSmoHistory.__table__.columns]
+
+    for batch in finished_batches:
+        history = TableSmoHistory()
+        for column_name in history_columns:
+            setattr(history, column_name, getattr(batch, column_name))
+
+        db.add(history)
+        db.delete(batch)
+
+    db.commit()
+    return len(finished_batches)

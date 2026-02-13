@@ -11,6 +11,7 @@ Panduan lengkap untuk testing PLC Read/Write/Sync functionality dengan fokus pad
 5. [Testing Workflow](#testing-workflow)
 6. [Expected Results](#expected-results)
 7. [Troubleshooting](#troubleshooting)
+8. [MO Batch Process Test](#mo-batch-process-test)
 
 ---
 
@@ -231,6 +232,40 @@ WRITE RESULTS
 - ✅ ASCII encoding (big-endian, 2 chars/word)
 - ✅ Boolean conversion (0/1)
 - ✅ Error handling per field
+
+---
+
+### 1b. test_write_read_area_from_csv.py
+
+**Purpose**: Write data ke PLC READ area dari file CSV (simulasi PLC manual).
+
+**Input CSV:** `app/reference/read_data_plc_input.csv`
+
+**Important Notes:**
+
+- Kolom `Value` dianggap nilai **human**; script akan menerapkan `scale` sebelum ditulis ke PLC.
+- Field `ASCII` akan dipotong/padded sesuai `length`.
+- Jika `Value` kosong, field tersebut dilewati.
+
+**Usage:**
+
+```bash
+python test_write_read_area_from_csv.py
+```
+
+---
+
+### 1c. test_export_read_area_to_csv.py
+
+**Purpose**: Export nilai PLC READ area ke CSV untuk diedit ulang.
+
+**Output CSV:** `app/reference/read_data_plc_input.csv`
+
+**Usage:**
+
+```bash
+python test_export_read_area_to_csv.py
+```
 
 ---
 
@@ -737,20 +772,74 @@ for i in range(10):
 
 ---
 
+## MO Batch Process Test
+
+Script baru untuk menguji tahapan proses MO batch end-to-end sesuai kebutuhan produksi.
+
+**Script:** `test_mo_batch_process.py`
+
+**Tahapan yang diuji:**
+
+1. Kosongkan table `mo_batch`
+2. Ambil `mo_list` detail dari Odoo dan isi `mo_batch` jika kosong
+3. Tulis data `mo_batch` ke memory PLC (slot BATCH01..BATCH30)
+4. Baca memory PLC dan update `mo_batch` sesuai `mo_id`
+5. Pindahkan MO selesai (`status_manufacturing = true`) ke `mo_histories`
+
+**Usage:**
+
+```bash
+python test_mo_batch_process.py
+```
+
+**Expected output (ringkas):**
+
+```
+STEP 1 - Clear mo_batch
+Cleared mo_batch rows: 7
+
+STEP 2 - Fetch and fill mo_batch
+Inserted MO rows: 10
+
+STEP 3 - Write mo_batch queue to PLC
+Batches written to PLC: 10
+
+STEP 4 - Sync PLC data to mo_batch
+PLC sync result: {'success': True, 'updated': True, 'mo_id': 'WH/MO/00002'}
+
+STEP 5 - Move finished MO to history
+Moved to mo_histories: 1
+Total history rows: 12
+Remaining mo_batch rows: 9
+```
+
+**Notes:**
+
+- Jika PLC tidak mengirim status selesai, script akan menandai MO yang terbaca dari PLC sebagai selesai untuk tujuan test.
+- Pastikan table `mo_histories` sudah ada (migration terbaru).
+
+---
+
 ## Summary
 
 | Test Script | Purpose | When to Use |
 |-------------|---------|-------------|
 | `test_write_read_area.py` | Populate PLC READ area | Development, testing tanpa PLC real |
+| `test_write_read_area_from_csv.py` | Populate PLC READ area from CSV | Manual PLC input simulation |
+| `test_export_read_area_to_csv.py` | Export PLC READ area to CSV | Capture PLC snapshot |
 | `test_plc_read.py` | Verify read functionality | After PLC has data |
 | `test_plc_sync.py` | Test database sync | Verify actual_consumption update |
 | `test_complete_cycle.py` | End-to-end test | CI/CD, integration testing |
+| `test_mo_batch_process.py` | Full MO batch lifecycle | Manual end-to-end validation |
 
 **Development Workflow:**
 
 1. **Development**: `test_write_read_area.py` → `test_plc_read.py`
 2. **Integration**: `test_complete_cycle.py`
-3. **Production**: PLC updates D6001-D6058 → `test_plc_sync.py` (periodic)
+3. **Process Validation**: `test_mo_batch_process.py`
+4. **Production**: PLC updates D6001-D6058 → `test_plc_sync.py` (periodic)
+5. **CSV Simulation**: `test_write_read_area_from_csv.py` → `test_plc_sync.py`
+6. **CSV Snapshot**: `test_export_read_area_to_csv.py` → edit CSV → `test_write_read_area_from_csv.py`
 
 ---
 
@@ -760,10 +849,11 @@ for i in range(10):
 2. ✅ Populate database: `python test_plc_write_from_odoo.py`
 3. ✅ Test write: `python test_write_read_area.py`
 4. ✅ Test cycle: `python test_complete_cycle.py`
-5. ✅ Schedule periodic sync (production)
+5. ✅ Test MO lifecycle: `python test_mo_batch_process.py`
+6. ✅ Schedule periodic sync (production)
 
 ---
 
 **Document Version:** 1.0  
-**Last Updated:** February 12, 2026  
+**Last Updated:** February 13, 2026  
 **Author:** FastAPI SCADA-Odoo Integration Team
