@@ -1,0 +1,836 @@
+"""
+Odoo Consumption and Mark Done Service
+
+Service untuk update material consumption di Odoo dan mark MO sebagai done.
+Digunakan setelah membaca data dari PLC untuk:
+1. Update consumption untuk setiap silo/component
+2. Mark MO sebagai done jika status_manufacturing = 1
+
+Database Persistence:
+- Odoo update dilakukan terlebih dahulu
+- Hanya jika Odoo respond sukses, data disimpan ke database
+- Ini memastikan database selalu sync dengan Odoo
+"""
+
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.models.tablesmo_batch import TableSmoBatch
+
+logger = logging.getLogger(__name__)
+
+
+class OdooConsumptionService:
+    """Service untuk update consumption dan mark done di Odoo
+    
+    Workflow:
+    1. Receive batch data (PLC read)
+    2. Send to Odoo API
+    3. Wait for success response
+    4. Only then → update local database
+    5. This ensures DB is always sync with Odoo state
+    """
+
+    def __init__(self, db: Optional[Session] = None):
+        self.settings = get_settings()
+        self.db = db  # Optional database session
+        self._silo_mapping: Dict[int, Dict[str, str]] = {}
+        self._load_silo_mapping()
+
+    def _load_silo_mapping(self) -> None:
+        """Load silo mapping dari silo_data.json"""
+        try:
+            reference_path = (
+                Path(__file__).parent.parent
+                / "reference"
+                / "silo_data.json"
+            )
+
+            if not reference_path.exists():
+                logger.warning(
+                    f"silo_data.json not found at {reference_path}"
+                )
+                return
+
+            with open(reference_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                mapping_list = data.get("silo_mapping", [])
+                for item in mapping_list:
+                    silo_id = item.get("id")
+                    if silo_id:
+                        self._silo_mapping[silo_id] = {
+                            "odoo_code": item.get("odoo_code", ""),
+                            "scada_tag": item.get("scada_tag", ""),
+                        }
+
+            logger.info(
+                f"Loaded silo mapping: {len(self._silo_mapping)} silos"
+            )
+        except Exception as e:
+            logger.error(f"Error loading silo mapping: {e}")
+
+    async def _authenticate(self) -> Optional[httpx.AsyncClient]:
+        """
+        Authenticate dengan Odoo dan return client dengan session cookie.
+
+        Returns:
+            AsyncClient dengan session authenticated, atau None jika gagal
+        """
+        try:
+            base_url = self.settings.odoo_base_url.rstrip("/")
+            auth_url = f"{base_url}/api/scada/authenticate"
+
+            auth_payload = {
+                "db": self.settings.odoo_db,
+                "login": self.settings.odoo_username,
+                "password": self.settings.odoo_password,
+            }
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(auth_url, json=auth_payload)
+                response.raise_for_status()
+
+                auth_data = response.json()
+                
+                # Handle both direct status and nested result.status
+                status = auth_data.get("status")
+                if not status:
+                    # Check if status is nested in result
+                    result = auth_data.get("result", {})
+                    status = result.get("status")
+                
+                if status != "success":
+                    logger.error(f"Odoo auth failed: {auth_data}")
+                    return None
+
+                # Create new client dengan cookies
+                cookies = response.cookies
+                new_client = httpx.AsyncClient(timeout=30.0)
+                new_client.cookies.update(cookies)
+                logger.info(f"✓ Authenticated with Odoo successfully")
+                return new_client
+
+        except Exception as e:
+            logger.error(f"Authentication error: {e}")
+            return None
+
+    async def update_consumption_with_odoo_codes(
+        self,
+        mo_id: str,
+        consumption_data: Dict[str, float],
+        quantity: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        ✅ RECOMMENDED: Automated batch update using /update-with-consumptions endpoint.
+
+        This is the RECOMMENDED method for automated batch processing.
+        Makes a SINGLE efficient API call to Odoo's /api/scada/mo/update-with-consumptions
+        endpoint with all consumption data at once.
+
+        Benefits:
+        - Single API call for ALL components (vs separate calls in update_consumption)
+        - More efficient and faster
+        - Better for automated workflows
+        - Lower latency
+
+        Args:
+            mo_id: Manufacturing Order ID (e.g., "WH/MO/00001")
+            consumption_data: Dict dengan format {odoo_code: quantity, ...}
+                            Contoh: {"silo101": 825, "silo102": 600}
+                            OR {scada_tag: quantity} - auto convert
+            quantity: Optional jumlah product quantity untuk update MO
+
+        Returns:
+            Dict dengan hasil update dari Odoo (single batch response)
+        """
+        client = await self._authenticate()
+        if not client:
+            return {
+                "success": False,
+                "error": "Failed to authenticate with Odoo",
+            }
+
+        try:
+            base_url = self.settings.odoo_base_url.rstrip("/")
+            update_endpoint = (
+                f"{base_url}/api/scada/mo/update-with-consumptions"
+            )
+
+            # Convert consumption data ke Odoo format jika perlu
+            # (jika input pakai scada_tag silo_a, convert ke silo101)
+            converted_data: Dict[str, float] = {}
+            valid_odoo_codes = {
+                data.get("odoo_code")
+                for data in self._silo_mapping.values()
+                if data.get("odoo_code")
+            }
+            for key, qty in consumption_data.items():
+                try:
+                    qty_value = float(qty)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Invalid quantity for {key}: {qty}, skipping"
+                    )
+                    continue
+
+                if qty_value <= 0:
+                    logger.debug(f"Skipping {key}: quantity <= 0")
+                    continue
+
+                # Check jika key sudah valid odoo_code (silo101..silo113)
+                if key in valid_odoo_codes:
+                    converted_data[key] = qty_value
+                else:
+                    # Convert dari scada_tag (silo_a) ke odoo_code (silo101)
+                    odoo_code = self._convert_scada_tag_to_odoo_code(key)
+                    if odoo_code:
+                        converted_data[odoo_code] = qty_value
+                    else:
+                        logger.warning(
+                            f"Cannot convert {key} to odoo_code, skipping"
+                        )
+
+            if not converted_data:
+                return {
+                    "success": False,
+                    "error": (
+                        "No valid consumption entries after conversion "
+                        "(check silo mapping and quantity values)"
+                    ),
+                }
+
+            # Build payload untuk Odoo endpoint
+            payload: Dict[str, Any] = {
+                "mo_id": mo_id,
+            }
+
+            if quantity and quantity > 0:
+                payload["quantity"] = float(quantity)
+
+            # Add all consumption data
+            payload.update(converted_data)
+
+            logger.info(
+                f"Sending to /mo/update-with-consumptions: {payload}"
+            )
+
+            response = await client.post(update_endpoint, json=payload)
+            response.raise_for_status()
+
+            raw_data = response.json()
+            result_data = raw_data.get("result", raw_data)
+            status = result_data.get("status")
+            message = result_data.get("message")
+            errors = result_data.get("errors", []) or []
+
+            if status in ["success", "ok"]:
+                is_partial_success = len(errors) > 0
+                if is_partial_success:
+                    logger.warning(
+                        "update-with-consumptions completed with errors "
+                        f"for {mo_id}: {errors}"
+                    )
+                logger.info(
+                    f"Updated MO {mo_id} with consumptions via "
+                    f"update-with-consumptions endpoint"
+                )
+                
+                # ✓ Odoo update successful → Save to database
+                db_saved = self._save_consumption_to_db(
+                    mo_id=mo_id,
+                    consumption_data=converted_data,
+                )
+                
+                return {
+                    "success": True,
+                    "mo_id": mo_id,
+                    "endpoint": "update-with-consumptions",
+                    "consumed_items": result_data.get("consumed_items"),
+                    "errors": errors,
+                    "partial_success": is_partial_success,
+                    "message": message,
+                    "db_saved": db_saved,  # ← Indicate if DB was updated
+                }
+            else:
+                logger.error(
+                    f"Update failed for {mo_id}: "
+                    f"{message}"
+                )
+                return {
+                    "success": False,
+                    "error": message or str(result_data),
+                }
+
+        except httpx.HTTPStatusError as e:
+            if e.response is not None and e.response.status_code == 404:
+                endpoint_path = "/api/scada/mo/update-with-consumptions"
+                logger.error(
+                    f"Endpoint {endpoint_path} not found on Odoo server"
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        f"Odoo endpoint not found (404): {endpoint_path}. "
+                        "Deploy or upgrade SCADA Odoo module on target "
+                        "server so this endpoint is available."
+                    ),
+                }
+            logger.error(
+                f"Error updating consumption with odoo codes for {mo_id}: {e}"
+            )
+            return {
+                "success": False,
+                "error": str(e),
+            }
+        except Exception as e:
+            logger.error(
+                f"Error updating consumption with odoo codes for {mo_id}: {e}"
+            )
+            return {
+                "success": False,
+                "error": str(e),
+            }
+        finally:
+            await client.aclose()
+
+    def _convert_scada_tag_to_odoo_code(self, scada_tag: str) -> Optional[str]:
+        """
+        Convert SCADA tag (silo_a) ke Odoo code (silo101).
+
+        Args:
+            scada_tag: SCADA tag (e.g., "silo_a")
+
+        Returns:
+            Odoo code (e.g., "silo101") atau None jika tidak found
+        """
+        for silo_data in self._silo_mapping.values():
+            if silo_data.get("scada_tag") == scada_tag:
+                return silo_data.get("odoo_code")
+        return None
+
+    def _convert_odoo_code_to_scada_tag(self, odoo_code: str) -> Optional[str]:
+        """
+        Convert Odoo code (silo101) ke SCADA tag (silo_a).
+
+        Args:
+            odoo_code: Odoo code (e.g., "silo101")
+
+        Returns:
+            SCADA tag (e.g., "silo_a") atau None jika tidak found
+        """
+        for silo_data in self._silo_mapping.values():
+            if silo_data.get("odoo_code") == odoo_code:
+                return silo_data.get("scada_tag")
+        return None
+
+    def _save_consumption_to_db(
+        self,
+        mo_id: str,
+        consumption_data: Dict[str, float],
+    ) -> bool:
+        """
+        Save consumption data ke mo_batch table di database.
+        
+        IMPORTANT: Hanya dipanggil setelah Odoo update SUKSES.
+        Ini memastikan DB selalu sync dengan Odoo state.
+
+        Args:
+            mo_id: Manufacturing Order ID
+            consumption_data: Dict {odoo_code: quantity, ...}
+                            Contoh: {"silo101": 825.5, "silo102": 600.3}
+
+        Returns:
+            True jika berhasil, False jika gagal atau tidak ada session
+        """
+        if not self.db:
+            logger.debug(
+                "Database session not available, skipping DB save"
+            )
+            return False
+
+        try:
+            # Find mo_batch record berdasarkan mo_id
+            stmt = select(TableSmoBatch).where(
+                TableSmoBatch.mo_id == mo_id
+            )
+            mo_batch = self.db.execute(stmt).scalars().first()
+
+            if not mo_batch:
+                logger.warning(f"MO batch {mo_id} not found in database")
+                return False
+
+            # Convert odoo_code back to SCADA tag dan update fields
+            # Contoh: silo101 → silo_a → consumption_silo_a
+            for odoo_code, quantity in consumption_data.items():
+                scada_tag = self._convert_odoo_code_to_scada_tag(odoo_code)
+                if scada_tag:
+                    # Build field name: silo_a → consumption_silo_a
+                    field_name = f"actual_consumption_{scada_tag}"
+                    if hasattr(mo_batch, field_name):
+                        setattr(mo_batch, field_name, float(quantity))
+                        logger.debug(
+                            f"Set {field_name} = {quantity} for MO {mo_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Field {field_name} not found in mo_batch"
+                        )
+
+            # Update last read timestamp
+            mo_batch.last_read_from_plc = datetime.now(tz=mo_batch.last_read_from_plc.tzinfo) if mo_batch.last_read_from_plc else datetime.utcnow()
+
+            # Commit ke database
+            self.db.commit()
+            logger.info(
+                f"✓ Saved {len(consumption_data)} consumption entries to DB "
+                f"for MO {mo_id}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Error saving consumption to database for {mo_id}: {e}"
+            )
+            self.db.rollback()
+            return False
+
+    async def update_consumption(
+        self,
+        mo_id: str,
+        equipment_id: str,
+        consumption_data: Dict[str, float],
+        timestamp: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        MANUAL UPDATE: Material consumption per-component using /material-consumption endpoint.
+
+        ⚠️ IMPORTANT: This method is for MANUAL per-component updates only.
+        It makes SEPARATE API calls to Odoo's /api/scada/material-consumption endpoint
+        for each material component using product_id parameter.
+
+        For automated batch processing, use update_consumption_with_odoo_codes() instead,
+        which is more efficient and uses a single API call.
+
+        Use this method for:
+        - Manual correction of specific material consumption
+        - Per-component adjustments after verification
+        - One-off updates
+
+        Args:
+            mo_id: Manufacturing order ID (e.g., "MO/2025/001")
+            equipment_id: Equipment code (e.g., "PLC01")
+            consumption_data: Dict dengan format {product_id: quantity, ...}
+                            Contoh: {"silo_a": 50.5, "silo_b": 25.3}
+            timestamp: ISO format timestamp, default = now
+
+        Returns:
+            Dict dengan status update consumption dengan detail per component
+        """
+        if timestamp is None:
+            timestamp = datetime.now().isoformat()
+
+        client = await self._authenticate()
+        if not client:
+            return {
+                "success": False,
+                "error": "Failed to authenticate with Odoo",
+            }
+
+        try:
+            base_url = self.settings.odoo_base_url.rstrip("/")
+            consumption_url = (
+                f"{base_url}/api/scada/material-consumption"
+            )
+
+            results = []
+
+            for product_key, quantity in consumption_data.items():
+                if quantity <= 0:
+                    logger.debug(f"Skipping {product_key}: quantity <= 0")
+                    continue
+
+                payload: Dict[str, Any] = {
+                    "equipment_id": equipment_id,
+                    "product_id": product_key,
+                    "quantity": float(quantity),
+                    "timestamp": timestamp,
+                    "mo_id": mo_id,
+                }
+
+                try:
+                    response = await client.post(
+                        consumption_url, json=payload
+                    )
+                    response.raise_for_status()
+
+                    result_data = response.json()
+                    results.append({
+                        "product": product_key,
+                        "quantity": quantity,
+                        "status": result_data.get("status"),
+                        "message": result_data.get("message"),
+                    })
+
+                    logger.info(
+                        f"Updated consumption for {product_key}: "
+                        f"{quantity} on MO {mo_id}"
+                    )
+
+                except Exception as e:
+                    logger.error(
+                        f"Error updating consumption for {product_key}: {e}"
+                    )
+                    results.append({
+                        "product": product_key,
+                        "quantity": quantity,
+                        "status": "error",
+                        "error": str(e),
+                    })
+
+            return {
+                "success": True,
+                "mo_id": mo_id,
+                "equipment_id": equipment_id,
+                "items_updated": len(results),
+                "details": results,
+            }
+
+        except Exception as e:
+            logger.error(f"Error in update_consumption: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+        finally:
+            await client.aclose()
+
+    def _save_mark_done_to_db(
+        self,
+        mo_id: str,
+        finished_qty: float,
+    ) -> bool:
+        """
+        Save mark-done status ke mo_batch table di database.
+        
+        IMPORTANT: Hanya dipanggil setelah Odoo mark-done SUKSES.
+
+        Args:
+            mo_id: Manufacturing Order ID
+            finished_qty: Finished quantity
+
+        Returns:
+            True jika berhasil, False jika gagal
+        """
+        if not self.db:
+            logger.debug(
+                "Database session not available, skipping DB save"
+            )
+            return False
+
+        try:
+            # Find mo_batch record berdasarkan mo_id
+            stmt = select(TableSmoBatch).where(
+                TableSmoBatch.mo_id == mo_id
+            )
+            mo_batch = self.db.execute(stmt).scalars().first()
+
+            if not mo_batch:
+                logger.warning(f"MO batch {mo_id} not found in database")
+                return False
+
+            # Update status dan finished quantity
+            mo_batch.status_manufacturing = True
+            mo_batch.actual_weight_quantity_finished_goods = float(
+                finished_qty
+            )
+            mo_batch.last_read_from_plc = datetime.now(tz=mo_batch.last_read_from_plc.tzinfo) if mo_batch.last_read_from_plc else datetime.utcnow()
+
+            # Commit ke database
+            self.db.commit()
+            logger.info(
+                f"✓ Saved mark-done to DB for MO {mo_id} "
+                f"(finished_qty={finished_qty})"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Error saving mark-done to database for {mo_id}: {e}"
+            )
+            self.db.rollback()
+            return False
+
+    async def mark_mo_done(
+        self,
+        mo_id: str,
+        finished_qty: float,
+        equipment_id: Optional[str] = None,
+        auto_consume: bool = False,
+        message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Mark Manufacturing Order sebagai done di Odoo.
+
+        Args:
+            mo_id: Manufacturing order ID (e.g., "MO/2025/001")
+            finished_qty: Quantity yang selesai (harus > 0)
+            equipment_id: Equipment code (optional)
+            auto_consume: Jika True, auto-apply remaining consumption
+            message: Optional message untuk log
+
+        Returns:
+            Dict dengan status mark done
+        """
+        client = await self._authenticate()
+        if not client:
+            return {
+                "success": False,
+                "error": "Failed to authenticate with Odoo",
+            }
+
+        try:
+            base_url = self.settings.odoo_base_url.rstrip("/")
+            mark_done_url = f"{base_url}/api/scada/mo/mark-done"
+
+            payload: Dict[str, Any] = {
+                "mo_id": mo_id,
+                "finished_qty": float(finished_qty),
+                "auto_consume": auto_consume,
+                # Some Odoo deployments parse this with strict
+                # "%Y-%m-%d %H:%M:%S" format.
+                "date_end_actual": datetime.now().strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+            }
+
+            if equipment_id:
+                payload["equipment_id"] = equipment_id
+
+            if message:
+                payload["message"] = message
+
+            response = await client.post(mark_done_url, json=payload)
+            response.raise_for_status()
+
+            raw_data = response.json()
+            result_data = raw_data.get("result", raw_data)
+            status = result_data.get("status")
+            message_text = result_data.get("message")
+
+            if status == "success":
+                logger.info(
+                    f"Marked MO {mo_id} as done with "
+                    f"finished_qty={finished_qty}"
+                )
+                
+                # ✓ Odoo mark-done successful → Save to database
+                db_saved = self._save_mark_done_to_db(
+                    mo_id=mo_id,
+                    finished_qty=finished_qty,
+                )
+                
+                return {
+                    "success": True,
+                    "mo_id": mo_id,
+                    "finished_qty": finished_qty,
+                    "message": message_text,
+                    "db_saved": db_saved,  # ← Indicate if DB was updated
+                }
+            else:
+                logger.error(
+                    f"Mark done failed for {mo_id}: "
+                    f"{message_text}"
+                )
+                return {
+                    "success": False,
+                    "error": message_text or str(result_data),
+                }
+
+        except Exception as e:
+            logger.error(f"Error marking MO {mo_id} as done: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+        finally:
+            await client.aclose()
+
+    async def process_batch_consumption(
+        self,
+        mo_id: str,
+        equipment_id: str,
+        batch_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Process consumption untuk semua silo component dalam batch.
+
+        MIGRATED to use efficient /api/scada/mo/update-with-consumptions endpoint.
+        
+        Args:
+            mo_id: Manufacturing order ID
+            equipment_id: Equipment code
+            batch_data: Dict dengan format:
+                      {
+                          "consumption_silo_a": 50.5,
+                          "consumption_silo_b": 25.3,
+                          ...
+                          "status_manufacturing": 1,
+                          "actual_weight_quantity_finished_goods": 1000
+                      }
+
+        Returns:
+            Dict dengan hasil proses keseluruhan
+        """
+        try:
+            # Extract consumption data from batch
+            # Convert SCADA tags (silo_a, silo_b) → Odoo codes (silo101, silo102)
+            consumption_entries: Dict[str, float] = {}
+            
+            for letter in "abcdefghijklm":
+                consumption_key = f"consumption_silo_{letter}"
+                silo_tag = f"silo_{letter}"
+
+                if consumption_key in batch_data:
+                    consumption_value = batch_data[consumption_key]
+                    if consumption_value and consumption_value > 0:
+                        # Convert silo_a → silo101, etc
+                        odoo_code = self._convert_scada_tag_to_odoo_code(silo_tag)
+                        if odoo_code:
+                            consumption_entries[odoo_code] = float(consumption_value)
+                        else:
+                            logger.warning(
+                                f"Cannot convert {silo_tag} to odoo_code, skipping"
+                            )
+
+            # Step 1: Update consumption using efficient endpoint
+            # (/api/scada/mo/update-with-consumptions - single call)
+            update_result = {
+                "consumption_updated": False,
+                "consumption_details": None,
+            }
+
+            if consumption_entries:
+                update_result[
+                    "consumption_details"
+                ] = await self.update_consumption_with_odoo_codes(
+                    mo_id=mo_id,
+                    consumption_data=consumption_entries,
+                )
+                update_result["consumption_updated"] = update_result[
+                    "consumption_details"
+                ].get("success", False)
+
+            # Step 2: Optional mark done (disabled by default)
+            mark_done_result = {
+                "mo_marked_done": False,
+                "mark_done_details": None,
+                "skipped": True,
+                "reason": "mark done disabled by default",
+            }
+
+            status_manufacturing = batch_data.get("status_manufacturing", 0)
+            run_mark_done = bool(batch_data.get("run_mark_done", False))
+            if run_mark_done and status_manufacturing == 1:
+                finished_qty = batch_data.get(
+                    "actual_weight_quantity_finished_goods", 0
+                )
+
+                if finished_qty > 0:
+                    mark_done_result[
+                        "mark_done_details"
+                    ] = await self.mark_mo_done(
+                        mo_id=mo_id,
+                        finished_qty=finished_qty,
+                        equipment_id=equipment_id,
+                        auto_consume=True,
+                    )
+                    mark_done_result["mo_marked_done"] = mark_done_result[
+                        "mark_done_details"
+                    ].get("success", False)
+                    mark_done_result["skipped"] = False
+                    mark_done_result["reason"] = None
+                else:
+                    mark_done_result["reason"] = (
+                        "run_mark_done=true but finished_qty <= 0"
+                    )
+            elif run_mark_done and status_manufacturing != 1:
+                mark_done_result["reason"] = (
+                    "run_mark_done=true but status_manufacturing != 1"
+                )
+            elif not run_mark_done:
+                mark_done_result["reason"] = (
+                    "run_mark_done is false; mark done not executed"
+                )
+
+            return {
+                "success": (
+                    update_result["consumption_updated"]
+                    or mark_done_result["mo_marked_done"]
+                ),
+                "mo_id": mo_id,
+                "endpoint": "update-with-consumptions",  # ← Indicates efficient endpoint used
+                "consumption": update_result,
+                "mark_done": mark_done_result,
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Error processing batch consumption for {mo_id}: {e}"
+            )
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def get_silo_mapping(self) -> Dict[int, Dict[str, str]]:
+        """Get current silo mapping"""
+        return self._silo_mapping
+
+    def get_silo_by_id(self, silo_id: int) -> Optional[Dict[str, str]]:
+        """Get silo mapping by ID"""
+        return self._silo_mapping.get(silo_id)
+
+    def get_silo_by_scada_tag(
+        self, scada_tag: str
+    ) -> Optional[Dict[str, str]]:
+        """Get silo mapping by SCADA tag"""
+        for silo_data in self._silo_mapping.values():
+            if silo_data.get("scada_tag") == scada_tag:
+                return silo_data
+        return None
+
+
+# Singleton instance (without DB)
+_consumption_service: Optional[OdooConsumptionService] = None
+
+
+def get_consumption_service(
+    db: Optional[Session] = None,
+) -> OdooConsumptionService:
+    """
+    Get consumption service instance.
+    
+    Args:
+        db: Optional database session for persistence
+        
+    Returns:
+        OdooConsumptionService instance (singleton if no db provided)
+    """
+    global _consumption_service
+    
+    # If db provided, create new instance with DB support
+    if db is not None:
+        return OdooConsumptionService(db=db)
+    
+    # Otherwise return singleton without DB
+    if _consumption_service is None:
+        _consumption_service = OdooConsumptionService()
+    return _consumption_service

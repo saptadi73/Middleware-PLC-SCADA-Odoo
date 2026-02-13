@@ -1,0 +1,69 @@
+{
+  "silo_mapping": [
+    {
+      "id": 101,
+      "odoo_code": "silo101",
+      "scada_tag": "silo_a"
+    },
+    {
+      "id": 102,
+      "odoo_code": "silo102",
+      "scada_tag": "silo_b"
+    },
+    {
+      "id": 103,
+      "odoo_code": "silo103",
+      "scada_tag": "silo_c"
+    },
+    {
+      "id": 104,
+      "odoo_code": "silo104",
+      "scada_tag": "silo_d"
+    },
+    {
+      "id": 105,
+      "odoo_code": "silo105",
+      "scada_tag": "silo_e"
+    },
+    {
+      "id": 106,
+      "odoo_code": "silo106",
+      "scada_tag": "silo_f"
+    },
+    {
+      "id": 107,
+      "odoo_code": "silo107",
+      "scada_tag": "silo_g"
+    },
+    {
+      "id": 108,
+      "odoo_code": "silo108",
+      "scada_tag": "silo_h"
+    },
+    {
+      "id": 109,
+      "odoo_code": "silo109",
+      "scada_tag": "silo_i"
+    },
+    {
+      "id": 110,
+      "odoo_code": "silo110",
+      "scada_tag": "silo_j"
+    },
+    {
+      "id": 111,
+      "odoo_code": "silo111",
+      "scada_tag": "silo_k"
+    },
+    {
+      "id": 112,
+      "odoo_code": "silo112",
+      "scada_tag": "silo_l"
+    },
+    {
+      "id": 113,
+      "odoo_code": "silo113",
+      "scada_tag": "silo_m"
+    }
+  ]
+}

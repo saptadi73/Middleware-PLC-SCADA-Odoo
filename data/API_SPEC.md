@@ -1088,7 +1088,152 @@ curl -X POST http://localhost:8069/api/scada/mo/mark-done \
 
 ---
 
-### 18. Get Equipment Status (Protected)
+### 18. Update MO with Consumptions by Equipment Code (Protected)
+
+**Update Manufacturing Order quantity dan material consumption berdasarkan Equipment Code SCADA**
+
+```http
+POST /api/scada/mo/update-with-consumptions
+Auth: Session cookie
+Content-Type: application/json
+```
+
+**Request Body**:
+
+```json
+{
+  "mo_id": "WH/MO/00001",
+  "quantity": 2000,
+  "silo101": 825,
+  "silo102": 600,
+  "silo103": 375,
+  "silo104": 240.25
+}
+```
+
+**Field Descriptions**:
+- `mo_id` (required): Manufacturing Order name/number (e.g., "WH/MO/00001")
+- `quantity` (optional): Update jumlah product quantity yang akan diproduksi
+- `{equipment_code}` (optional): Equipment code SCADA (e.g., "silo101", "silo102") dengan nilai consumption quantity
+
+**How it works**:
+1. System akan mencari Manufacturing Order berdasarkan `mo_id`
+2. Jika `quantity` diberikan, akan update `product_qty` MO tersebut
+3. Untuk setiap equipment code yang dikirim (kecuali mo_id dan quantity):
+   - System mencari equipment berdasarkan code (e.g., "silo101")
+   - Mencari raw material moves yang berelasi dengan equipment tersebut
+   - Apply consumption quantity ke moves tersebut
+   - Log consumption ke scada.equipment.material
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "message": "MO updated successfully",
+  "mo_id": "WH/MO/00001",
+  "mo_state": "confirmed",
+  "updated_quantity": 2000,
+  "consumed_items": [
+    {
+      "equipment_code": "silo101",
+      "equipment_name": "SILO A",
+      "applied_qty": 825.0,
+      "move_ids": [123],
+      "products": ["Pollard Angsa"]
+    },
+    {
+      "equipment_code": "silo102",
+      "equipment_name": "SILO B",
+      "applied_qty": 600.0,
+      "move_ids": [124],
+      "products": ["Kopra mesh"]
+    },
+    {
+      "equipment_code": "silo103",
+      "equipment_name": "SILO C",
+      "applied_qty": 375.0,
+      "move_ids": [125],
+      "products": ["PKE Pellet"]
+    }
+  ],
+  "errors": []
+}
+```
+
+**Error Response** (if some items failed):
+
+```json
+{
+  "status": "success",
+  "message": "MO updated with some errors",
+  "mo_id": "WH/MO/00001",
+  "mo_state": "confirmed",
+  "updated_quantity": 2000,
+  "consumed_items": [...],
+  "errors": [
+    "silo999: Equipment not found",
+    "silo888: No raw material move found for this equipment"
+  ]
+}
+```
+
+**cURL Example**:
+```bash
+curl -X POST http://localhost:8069/api/scada/mo/update-with-consumptions \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "mo_id": "WH/MO/00001",
+    "quantity": 2000,
+    "silo101": 825,
+    "silo102": 600,
+    "silo103": 375,
+    "silo104": 240.25,
+    "silo105": 50,
+    "silo106": 83.50
+  }'
+```
+
+**JSON-RPC Example**:
+```bash
+curl -X POST http://localhost:8069/api/scada/mo/update-with-consumptions \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "call",
+    "params": {
+      "mo_id": "WH/MO/00001",
+      "quantity": 2000,
+      "silo101": 825,
+      "silo102": 600,
+      "silo103": 375
+    }
+  }'
+```
+
+**Use Case**:
+Endpoint ini ideal untuk sistem SCADA yang sudah mengetahui equipment code untuk setiap material/silo dan ingin mengirimkan consumption data dalam satu request tanpa perlu mengetahui product_id atau material_id.
+
+Frontend hanya perlu mengirim:
+- MO name
+- Quantity produksi (optional)
+- Mapping equipment_code → consumption_quantity
+
+System akan otomatis:
+- Mencari material yang berelasi dengan equipment tersebut di MO
+- Apply consumption ke raw material moves
+- Log consumption history
+
+**Prerequisites**:
+1. Manufacturing Order harus sudah exist
+2. Equipment code harus terdaftar di SCADA Equipment master
+3. Raw material moves harus sudah memiliki relasi ke equipment (via `scada_equipment_id` di BoM Line atau Stock Move)
+
+---
+
+### 19. Get Equipment Status (Protected)
 
 **Retrieve Equipment Connection & Status**
 
@@ -1124,7 +1269,7 @@ curl -X GET http://localhost:8069/api/scada/equipment/PLC01 \
 
 ---
 
-### 19. Get Product List (Protected)
+### 20. Get Product List (Protected)
 
 **Retrieve Product List**
 
@@ -1209,7 +1354,7 @@ curl -X POST http://localhost:8069/api/scada/products \
 
 ---
 
-### 20. Get Product List by Category (Protected)
+### 21. Get Product List by Category (Protected)
 
 **Retrieve Product List with Category Filter (JSON-RPC)**
 
@@ -1258,7 +1403,7 @@ curl -X POST http://localhost:8069/api/scada/products-by-category \
 
 ---
 
-### 21. Get BoM List (Protected)
+### 22. Get BoM List (Protected)
 
 **Retrieve BoM list with components**
 

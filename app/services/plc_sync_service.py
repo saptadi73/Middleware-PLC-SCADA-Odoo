@@ -4,6 +4,7 @@ Reads data from PLC and updates mo_batch records based on MO_ID.
 Only updates if values have changed to avoid unnecessary database operations.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -14,6 +15,9 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.tablesmo_batch import TableSmoBatch
 from app.services.plc_read_service import get_plc_read_service
+from app.services.odoo_consumption_service import (
+    get_consumption_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,7 @@ class PLCSyncService:
 
     def __init__(self):
         self.plc_read_service = get_plc_read_service()
+        self.consumption_service = get_consumption_service()
 
     def sync_from_plc(self) -> Dict[str, Any]:
         """
@@ -83,6 +88,152 @@ class PLCSyncService:
 
         except Exception as e:
             logger.error(f"Error syncing from PLC: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "mo_id": mo_id,
+            }
+
+    async def sync_consumption_to_odoo(
+        self, batch: TableSmoBatch
+    ) -> Dict[str, Any]:
+        """
+        Sync consumption data from batch to Odoo.
+
+        Setelah reading PLC, function ini:
+        1. Update consumption untuk semua silo yang punya data
+        2. Mark MO sebagai done jika status_manufacturing = 1
+
+        Args:
+            batch: TableSmoBatch record dengan data terbaru dari PLC
+
+        Returns:
+            Dict dengan hasil sync ke Odoo
+        """
+        mo_id_val = str(batch.mo_id) if batch.mo_id is not None else ""
+        if not mo_id_val or mo_id_val.strip() == "":
+            return {
+                "success": False,
+                "error": "No MO ID in batch",
+            }
+
+        try:
+            # Prepare batch data untuk consumption service
+            batch_data = {
+                "status_manufacturing": batch.status_manufacturing,
+                "actual_weight_quantity_finished_goods": (
+                    batch.actual_weight_quantity_finished_goods
+                ),
+            }
+
+            # Add consumption untuk setiap silo
+            for letter in "abcdefghijklm":
+                consumption_attr = f"consumption_silo_{letter}"
+                if hasattr(batch, consumption_attr):
+                    batch_data[consumption_attr] = getattr(
+                        batch, consumption_attr
+                    )
+
+            # Get equipment ID dari batch jika ada
+            equipment_id_val = (
+                batch.equipment_id_batch
+                if batch.equipment_id_batch is not None
+                else "PLC01"
+            )
+            equipment_id = str(equipment_id_val)
+
+            # Process batch consumption dengan consumption service
+            result = await self.consumption_service.process_batch_consumption(
+                mo_id=mo_id_val,
+                equipment_id=equipment_id,
+                batch_data=batch_data,
+            )
+
+            logger.info(
+                f"Consumption sync result for {mo_id_val}: "
+                f"{result}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                f"Error syncing consumption for {mo_id_val}: {e}",
+                exc_info=True,
+            )
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def sync_from_plc_with_consumption(self) -> Dict[str, Any]:
+        """
+        Read from PLC, update batch, dan sync consumption ke Odoo.
+
+        Combined workflow yang:
+        1. Read data dari PLC
+        2. Update mo_batch table
+        3. Sync consumption ke Odoo
+        4. Mark done di Odoo jika manufacturing selesai
+
+        Returns:
+            Dict dengan combined results
+        """
+        mo_id = None
+        try:
+            # Step 1: Read from PLC
+            plc_data = self.plc_read_service.read_batch_data()
+
+            mo_id = plc_data.get("mo_id", "").strip()
+            if not mo_id:
+                return {
+                    "success": False,
+                    "error": "No MO_ID found in PLC data",
+                    "mo_id": None,
+                }
+
+            # Step 2: Update mo_batch
+            with SessionLocal() as session:
+                result = session.execute(
+                    select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
+                )
+                batch = result.scalar_one_or_none()
+
+                if not batch:
+                    return {
+                        "success": False,
+                        "error": f"MO batch not found for MO_ID: {mo_id}",
+                        "mo_id": mo_id,
+                    }
+
+                # Update batch dari PLC data
+                updated = self._update_batch_if_changed(
+                    session, batch, plc_data
+                )
+
+                if updated:
+                    session.commit()
+                    logger.info(f"Updated mo_batch for MO_ID: {mo_id}")
+
+                # Step 3: Sync consumption ke Odoo
+                # Menggunakan asyncio.run karena function ini sync tapi
+                # consumption service adalah async
+                consumption_result = asyncio.run(
+                    self.sync_consumption_to_odoo(batch)
+                )
+
+                return {
+                    "success": True,
+                    "mo_id": mo_id,
+                    "batch_updated": updated,
+                    "consumption_sync": consumption_result,
+                }
+
+        except Exception as e:
+            logger.error(
+                f"Error in sync_from_plc_with_consumption: {e}",
+                exc_info=True,
+            )
             return {
                 "success": False,
                 "error": str(e),
