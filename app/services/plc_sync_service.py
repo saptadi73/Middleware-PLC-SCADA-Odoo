@@ -105,6 +105,14 @@ class PLCSyncService:
         """
         changed = False
 
+        # Support both old and new payload shapes from PLCReadService.
+        # Current read_batch_data() returns:
+        # - quantity
+        # - status: {manufacturing, operation}
+        # - weight_finished_good
+        status_payload = plc_data.get("status")
+        status_obj = status_payload if isinstance(status_payload, dict) else {}
+
         # Map silo letters to consumption values from PLC
         silo_map = {
             "a": "SILO 1 Consumption",
@@ -141,7 +149,10 @@ class PLCSyncService:
                     )
 
         # Update actual weight quantity finished goods
-        new_quantity = plc_data.get("quantity_goods")
+        new_quantity = plc_data.get("weight_finished_good")
+        if new_quantity is None:
+            # Backward compatibility with previous key naming
+            new_quantity = plc_data.get("quantity_goods")
         if new_quantity is not None:
             if batch.actual_weight_quantity_finished_goods != new_quantity:
                 batch.actual_weight_quantity_finished_goods = new_quantity
@@ -152,7 +163,10 @@ class PLCSyncService:
                 )
 
         # Update status fields
-        new_status_mfg = plc_data.get("status_manufacturing")
+        new_status_mfg = status_obj.get("manufacturing")
+        if new_status_mfg is None:
+            # Backward compatibility with previous key naming
+            new_status_mfg = plc_data.get("status_manufacturing")
         if new_status_mfg is not None:
             # Convert to boolean
             status_bool = bool(new_status_mfg)
@@ -165,7 +179,10 @@ class PLCSyncService:
                     f"{current_status} → {status_bool}"
                 )
 
-        new_status_op = plc_data.get("status_operation")
+        new_status_op = status_obj.get("operation")
+        if new_status_op is None:
+            # Backward compatibility with previous key naming
+            new_status_op = plc_data.get("status_operation")
         if new_status_op is not None:
             status_bool = bool(new_status_op)
             current_status_op: bool = batch.status_operation  # type: ignore
