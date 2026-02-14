@@ -304,59 +304,90 @@ def start_scheduler():
     scheduler = AsyncIOScheduler()
     
     # Task 1: Auto-sync MO dari Odoo (every 60 minutes by default)
-    scheduler.add_job(
-        auto_sync_mo_task,
-        trigger="interval",
-        minutes=settings.sync_interval_minutes,
-        id="auto_sync_mo",
-        replace_existing=True,
-        max_instances=1,
-    )
-    logger.info(
-        f"✓ Task 1: Auto-sync MO scheduler added "
-        f"(interval: {settings.sync_interval_minutes} minutes)"
-    )
+    if settings.enable_task_1_auto_sync:
+        scheduler.add_job(
+            auto_sync_mo_task,
+            trigger="interval",
+            minutes=settings.sync_interval_minutes,
+            id="auto_sync_mo",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            f"✓ Task 1: Auto-sync MO scheduler added "
+            f"(interval: {settings.sync_interval_minutes} minutes)"
+        )
+    else:
+        logger.warning(f"⊘ Task 1: Auto-sync MO scheduler DISABLED (ENABLE_TASK_1_AUTO_SYNC=false)")
     
     # Task 2: PLC read sync (every 5 minutes for near real-time updates)
-    scheduler.add_job(
-        plc_read_sync_task,
-        trigger="interval",
-        minutes=5,
-        id="plc_read_sync",
-        replace_existing=True,
-        max_instances=1,
-    )
-    logger.info("✓ Task 2: PLC read sync scheduler added (interval: 5 minutes)")
+    if settings.enable_task_2_plc_read:
+        scheduler.add_job(
+            plc_read_sync_task,
+            trigger="interval",
+            minutes=settings.plc_read_interval_minutes,
+            id="plc_read_sync",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            f"✓ Task 2: PLC read sync scheduler added "
+            f"(interval: {settings.plc_read_interval_minutes} minutes)"
+        )
+    else:
+        logger.warning(f"⊘ Task 2: PLC read sync scheduler DISABLED (ENABLE_TASK_2_PLC_READ=false)")
     
     # Task 3: Process completed batches (every 3 minutes)
-    scheduler.add_job(
-        process_completed_batches_task,
-        trigger="interval",
-        minutes=3,
-        id="process_completed_batches",
-        replace_existing=True,
-        max_instances=1,
-    )
-    logger.info("✓ Task 3: Process completed batches scheduler added (interval: 3 minutes)")
+    if settings.enable_task_3_process_completed:
+        scheduler.add_job(
+            process_completed_batches_task,
+            trigger="interval",
+            minutes=settings.process_completed_interval_minutes,
+            id="process_completed_batches",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            f"✓ Task 3: Process completed batches scheduler added "
+            f"(interval: {settings.process_completed_interval_minutes} minutes)"
+        )
+    else:
+        logger.warning(f"⊘ Task 3: Process completed batches scheduler DISABLED (ENABLE_TASK_3_PROCESS_COMPLETED=false)")
     
     # Task 4: Monitor batch health (every 10 minutes)
-    scheduler.add_job(
-        monitor_batch_health_task,
-        trigger="interval",
-        minutes=10,
-        id="monitor_batch_health",
-        replace_existing=True,
-        max_instances=1,
-    )
-    logger.info("✓ Task 4: Batch health monitoring scheduler added (interval: 10 minutes)")
+    if settings.enable_task_4_health_monitor:
+        scheduler.add_job(
+            monitor_batch_health_task,
+            trigger="interval",
+            minutes=settings.health_monitor_interval_minutes,
+            id="monitor_batch_health",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(
+            f"✓ Task 4: Batch health monitoring scheduler added "
+            f"(interval: {settings.health_monitor_interval_minutes} minutes)"
+        )
+    else:
+        logger.warning(f"⊘ Task 4: Batch health monitoring scheduler DISABLED (ENABLE_TASK_4_HEALTH_MONITOR=false)")
     
     scheduler.start()
+    
+    # Count enabled tasks
+    enabled_tasks = [
+        settings.enable_task_1_auto_sync,
+        settings.enable_task_2_plc_read,
+        settings.enable_task_3_process_completed,
+        settings.enable_task_4_health_monitor,
+    ]
+    task_count = sum(enabled_tasks)
+    
     logger.info(
-        f"✓✓✓ Enhanced Scheduler STARTED with 4 tasks ✓✓✓\n"
-        f"  - Task 1: Auto-sync MO ({settings.sync_interval_minutes} min)\n"
-        f"  - Task 2: PLC read sync (5 min)\n"
-        f"  - Task 3: Process completed (3 min)\n"
-        f"  - Task 4: Health monitoring (10 min)"
+        f"✓✓✓ Enhanced Scheduler STARTED with {task_count}/4 tasks enabled ✓✓✓\n"
+        f"  - Task 1: Auto-sync MO ({settings.sync_interval_minutes} min) - {'✓' if settings.enable_task_1_auto_sync else '⊘'}\n"
+        f"  - Task 2: PLC read sync ({settings.plc_read_interval_minutes} min) - {'✓' if settings.enable_task_2_plc_read else '⊘'}\n"
+        f"  - Task 3: Process completed ({settings.process_completed_interval_minutes} min) - {'✓' if settings.enable_task_3_process_completed else '⊘'}\n"
+        f"  - Task 4: Health monitoring ({settings.health_monitor_interval_minutes} min) - {'✓' if settings.enable_task_4_health_monitor else '⊘'}"
     )
 
 

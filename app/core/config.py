@@ -33,10 +33,21 @@ class Settings(BaseSettings):
     odoo_username: str = Field(..., validation_alias="ODOO_USERNAME")
     odoo_password: str = Field(..., validation_alias="ODOO_PASSWORD")
 
-    # Auto-sync settings
+    # Scheduler Master Control
     enable_auto_sync: bool = Field(default=False, validation_alias="ENABLE_AUTO_SYNC")
-    sync_interval_minutes: int = Field(default=5, validation_alias="SYNC_INTERVAL_MINUTES")
+    
+    # Scheduler: Individual Task Control
+    enable_task_1_auto_sync: bool = Field(default=True, validation_alias="ENABLE_TASK_1_AUTO_SYNC")
+    enable_task_2_plc_read: bool = Field(default=True, validation_alias="ENABLE_TASK_2_PLC_READ")
+    enable_task_3_process_completed: bool = Field(default=True, validation_alias="ENABLE_TASK_3_PROCESS_COMPLETED")
+    enable_task_4_health_monitor: bool = Field(default=True, validation_alias="ENABLE_TASK_4_HEALTH_MONITOR")
+    
+    # Auto-sync settings
+    sync_interval_minutes: int = Field(default=60, validation_alias="SYNC_INTERVAL_MINUTES")
     sync_batch_limit: int = Field(default=10, validation_alias="SYNC_BATCH_LIMIT")
+    plc_read_interval_minutes: int = Field(default=5, validation_alias="PLC_READ_INTERVAL_MINUTES")
+    process_completed_interval_minutes: int = Field(default=3, validation_alias="PROCESS_COMPLETED_INTERVAL_MINUTES")
+    health_monitor_interval_minutes: int = Field(default=10, validation_alias="HEALTH_MONITOR_INTERVAL_MINUTES")
 
 
 @lru_cache

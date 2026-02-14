@@ -1,0 +1,162 @@
+# 🎛️ Scheduler Task Control - Quick Reference Card
+
+## Get Started in 30 Seconds
+
+### Option 1: Use Default (All Tasks Enabled)
+```env
+# Just copy .env.example to .env (no changes needed)
+ENABLE_AUTO_SYNC=true
+```
+
+### Option 2: Development Mode (Fast Polling)
+```env
+ENABLE_AUTO_SYNC=true
+ENABLE_TASK_1_AUTO_SYNC=true
+ENABLE_TASK_2_PLC_READ=true
+ENABLE_TASK_3_PROCESS_COMPLETED=true
+ENABLE_TASK_4_HEALTH_MONITOR=false
+
+SYNC_INTERVAL_MINUTES=1
+PLC_READ_INTERVAL_MINUTES=1
+PROCESS_COMPLETED_INTERVAL_MINUTES=1
+```
+
+### Option 3: PLC Troubleshooting
+```env
+ENABLE_AUTO_SYNC=true
+ENABLE_TASK_1_AUTO_SYNC=false
+ENABLE_TASK_2_PLC_READ=true
+ENABLE_TASK_3_PROCESS_COMPLETED=false
+ENABLE_TASK_4_HEALTH_MONITOR=false
+```
+
+---
+
+## 📊 Task Reference
+
+| Task | Function | Default Enable | Default Interval |
+|------|----------|------------------|------------------|
+| **Task 1** | Auto-sync MO dari Odoo | ✅ true | 60 min |
+| **Task 2** | PLC read sync (real-time) | ✅ true | 5 min |
+| **Task 3** | Process completed batches | ✅ true | 3 min |
+| **Task 4** | Health monitoring | ✅ true | 10 min |
+
+---
+
+## 🔧 Configuration Flags
+
+```env
+# Master switch (disable all if false)
+ENABLE_AUTO_SYNC=true
+
+# Individual task control
+ENABLE_TASK_1_AUTO_SYNC=true
+ENABLE_TASK_2_PLC_READ=true
+ENABLE_TASK_3_PROCESS_COMPLETED=true
+ENABLE_TASK_4_HEALTH_MONITOR=true
+
+# Custom intervals (minutes)
+SYNC_INTERVAL_MINUTES=60
+PLC_READ_INTERVAL_MINUTES=5
+PROCESS_COMPLETED_INTERVAL_MINUTES=3
+HEALTH_MONITOR_INTERVAL_MINUTES=10
+```
+
+---
+
+## 🚀 Startup Verification
+
+After restart, see in logs:
+
+```
+✓ Task 1: Auto-sync MO scheduler added (interval: 60 minutes)
+✓ Task 2: PLC read sync scheduler added (interval: 5 minutes)
+✓ Task 3: Process completed batches scheduler added (interval: 3 minutes)
+✓ Task 4: Batch health monitoring scheduler added (interval: 10 minutes)
+
+✓✓✓ Enhanced Scheduler STARTED with 4/4 tasks enabled ✓✓✓
+```
+
+---
+
+## 💡 Common Scenarios
+
+### Scenario A: High-Frequency Polling (Testing)
+```env
+SYNC_INTERVAL_MINUTES=1
+PLC_READ_INTERVAL_MINUTES=1
+PROCESS_COMPLETED_INTERVAL_MINUTES=1
+HEALTH_MONITOR_INTERVAL_MINUTES=1
+```
+
+### Scenario B: Conservative (Production)
+```env
+SYNC_INTERVAL_MINUTES=120
+PLC_READ_INTERVAL_MINUTES=10
+PROCESS_COMPLETED_INTERVAL_MINUTES=5
+HEALTH_MONITOR_INTERVAL_MINUTES=20
+```
+
+### Scenario C: DataSync Only
+```env
+ENABLE_TASK_1_AUTO_SYNC=true
+ENABLE_TASK_2_PLC_READ=false
+ENABLE_TASK_3_PROCESS_COMPLETED=true
+ENABLE_TASK_4_HEALTH_MONITOR=false
+```
+
+### Scenario D: PLC Monitoring Only
+```env
+ENABLE_TASK_1_AUTO_SYNC=false
+ENABLE_TASK_2_PLC_READ=true
+ENABLE_TASK_3_PROCESS_COMPLETED=false
+ENABLE_TASK_4_HEALTH_MONITOR=true
+```
+
+---
+
+## ❌ Disable All Tasks
+
+```env
+ENABLE_AUTO_SYNC=false
+```
+
+(This overrides all individual task flags)
+
+---
+
+## 🧪 Verify Configuration
+
+Run test script:
+```bash
+python test_scheduler_config.py
+```
+
+Expected output:
+```
+✓✓✓ ALL TESTS PASSED ✓✓✓
+✓ Configuration is valid and ready for production
+```
+
+---
+
+## 📖 More Info
+
+- Full guide: [SCHEDULER_CONTROL_GUIDE.md](SCHEDULER_CONTROL_GUIDE.md)
+- Implementation details: [SCHEDULER_TASK_CONTROL_SUMMARY.md](SCHEDULER_TASK_CONTROL_SUMMARY.md)
+- Config template: [.env.example](.env.example)
+
+---
+
+## 🔑 Key Points
+
+✓ Each task can be enabled/disabled independently  
+✓ Each task has its own interval setting  
+✓ Master switch ENABLE_AUTO_SYNC disables everything when false  
+✓ No code changes needed - just edit .env  
+✓ Restart app to apply changes  
+✓ Check startup logs to verify configuration  
+
+---
+
+**That's it! You're ready to go.** 🚀
