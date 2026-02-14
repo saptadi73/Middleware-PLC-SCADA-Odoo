@@ -14,7 +14,7 @@ Database Persistence:
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -367,6 +367,16 @@ class OdooConsumptionService:
                 logger.warning(f"MO batch {mo_id} not found in database")
                 return False
 
+            # Check if status_manufacturing is already 1 (True)
+            # If manufacturing is done, skip update to prevent overwriting completed data
+            current_status_mfg: bool = mo_batch.status_manufacturing  # type: ignore
+            if current_status_mfg:
+                logger.info(
+                    f"Skip consumption update for MO {mo_id}: "
+                    f"status_manufacturing already completed (1)"
+                )
+                return False
+
             # Convert odoo_code back to SCADA tag dan update fields
             # Contoh: silo101 → silo_a → consumption_silo_a
             for odoo_code, quantity in consumption_data.items():
@@ -385,7 +395,7 @@ class OdooConsumptionService:
                         )
 
             # Update last read timestamp
-            mo_batch.last_read_from_plc = datetime.now(tz=mo_batch.last_read_from_plc.tzinfo) if mo_batch.last_read_from_plc else datetime.utcnow()
+            mo_batch.last_read_from_plc = datetime.now(timezone.utc)  # type: ignore
 
             # Commit ke database
             self.db.commit()
@@ -547,11 +557,11 @@ class OdooConsumptionService:
                 return False
 
             # Update status dan finished quantity
-            mo_batch.status_manufacturing = True
-            mo_batch.actual_weight_quantity_finished_goods = float(
+            mo_batch.status_manufacturing = True  # type: ignore
+            mo_batch.actual_weight_quantity_finished_goods = float(  # type: ignore
                 finished_qty
             )
-            mo_batch.last_read_from_plc = datetime.now(tz=mo_batch.last_read_from_plc.tzinfo) if mo_batch.last_read_from_plc else datetime.utcnow()
+            mo_batch.last_read_from_plc = datetime.now(timezone.utc)  # type: ignore
 
             # Commit ke database
             self.db.commit()

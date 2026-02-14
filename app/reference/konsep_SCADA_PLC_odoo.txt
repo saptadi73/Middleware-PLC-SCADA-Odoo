@@ -1,0 +1,20 @@
+Semua service telah komplit:
+1. Mendapatkan list MO yang confirm dari Odoo, kemudian update ke table mo_batch
+2. Dari table mo_batch, maximal 10 batch (sesuai dengan kapasitas PLC) langsung diupdate ke PLC memory (WRITE MEMORY).
+3. PLC melakukan proses sesuai daftar Batch, dan setiap batch selesai, PLC akan update status_manufacturing di memory area READ.
+4. Area READ akan dibaca oleh Middleware secara periodik, dan update ke table mo_batch untuk mengisi data actual-nya dan status_manufacturing-nya.
+5. READ akan terus dilakukan secara periodik, jika ada perubahan data dari (last_update) maka akan lakukan update ke table mo_batch.
+6. Update hanya akan dilakukan jika mo_id masih ada dan status manufacturing belum selesai (status_manufacturing != 1).
+7. Jika status_manufacturing sudah selesai (status_manufacturing == 1), maka batch tersebut tidak akan diupdate lagi, meskipun ada perubahan data di PLC.
+8. Ada proses terpisah yang selalu baca mo_batch, jika ada mo_id yang sudah status_manufacturing == 1, maka akan update ke Odoo untuk menandakan bahwa MO tersebut sudah selesai diproses di PLC, dan pindah datanya ke table mo_histories. Di Mo_batch data mo tersebut dihapus jika sudah selesai sukses update ke Odoo.
+9. Proses terpisah ini juga akan melakukan update ke Odoo jika ada batch yang mengalami kegagalan proses di PLC, dengan menandakan status_manufacturing == 2 (gagal), dan update ke Odoo untuk menandakan bahwa MO tersebut gagal diproses di PLC, dan pindah datanya ke table mo_histories dengan status gagal. Di Mo_batch data mo tersebut dihapus jika sudah selesai sukses update ke Odoo.
+
+Kebutuhan selanjutnya :
+1. Membuat scheduler yang akan menjalankan proses rutin di atas, sebaiknya bagaimana. Mana yang dihandle 1 script rutin untuk semua task, dan mana yang harus dipisah.
+2. Membuat waktu periodik cycle untuk task-task di atas yang terbaik.
+3. Membuat log untuk setiap proses yang terjadi, sehingga memudahkan dalam troubleshooting jika terjadi masalah.
+4. Menambahkan fitur manual untuk memaksa update status manufacturing di PLC, misalnya jika ada batch yang mengalami masalah dan perlu direset atau diproses ulang.
+5. Menambahkan fitur notifikasi untuk memberitahu operator atau tim terkait jika ada batch yang mengalami kegagalan proses di PLC, sehingga bisa segera ditindaklanjuti.
+6. Menambahkan fitur monitoring untuk melihat status batch secara real-time, sehingga operator bisa langsung mengetahui jika ada batch yang sedang diproses, sudah selesai, atau mengalami masalah.
+7. Menambahkan fitur list mo_batch yang sudah selesai tapi masih gagal update ke Odoo, dan harus di push manual.
+8. Menambahkan fitur untuk melihat history batch yang sudah selesai, baik yang sukses maupun yang gagal, sehingga bisa digunakan untuk analisis dan perbaikan proses di masa depan.

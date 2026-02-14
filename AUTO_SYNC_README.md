@@ -79,6 +79,51 @@ SYNC_BATCH_LIMIT=10                # Jumlah batch yang di-fetch per sync
 6. **Clear Table**: Setelah PLC selesai, clear table (manual atau via API)
 7. **Repeat**: Scheduler detect table kosong → fetch batch berikutnya
 
+### Data Protection During PLC Read
+
+**IMPORTANT: Completed Manufacturing Order Protection**
+
+Saat PLC membaca data dan update database, sistem melindungi data yang sudah selesai:
+
+- ✅ **Update allowed**: `status_manufacturing = 0` (False) - Manufacturing in progress
+- ❌ **Update blocked**: `status_manufacturing = 1` (True) - Manufacturing already completed
+
+**Implementation** (`plc_sync_service.py`):
+```python
+def _update_batch_if_changed(...):
+    # Check if manufacturing already completed
+    if batch.status_manufacturing:
+        logger.info(f"Skip update for MO {batch.mo_id}: status_manufacturing already completed (1)")
+        return False
+    
+    # Proceed with update only if still in progress
+    # Update actual_consumption_silo_* fields
+    # Update status fields if changed
+```
+
+**Why this matters:**
+- PLC read cycles continue even after MO is marked done
+- Protection prevents overwriting final consumption data
+- Maintains data integrity for completed/historical records
+- Ensures audit trail remains accurate
+
+**Workflow with Protection:**
+```
+PLC Read Cycle → Check status_manufacturing
+                        ↓
+              ┌─────────┴─────────┐
+              │                   │
+          = 0 (False)          = 1 (True)
+              │                   │
+              ▼                   ▼
+       Update Database      Skip Update
+       (In Progress)        (Completed)
+              │                   │
+              └─────────┬─────────┘
+                        ↓
+                  Continue Cycle
+```
+
 ## API Endpoints
 
 ### 1. Check Batch Status

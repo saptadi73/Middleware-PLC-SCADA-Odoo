@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, Numeric, String, text
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -81,3 +81,8 @@ class TableSmoHistory(Base):
 
     # Timestamp of last PLC read
     last_read_from_plc = Column(DateTime(timezone=True), nullable=True)
+
+    # Status tracking for history
+    # Values: 'completed', 'failed', 'cancelled'
+    status = Column(String(20), nullable=False, server_default="completed", index=True)
+    notes = Column(Text, nullable=True)

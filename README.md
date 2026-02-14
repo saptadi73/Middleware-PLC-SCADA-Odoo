@@ -9,10 +9,12 @@ Middleware untuk integrasi SCADA PLC (Omron SYMAC CJ2M CPU31) dengan Odoo 14 men
   - **Write**: Send MO data ke PLC menggunakan FINS/UDP protocol
   - **Read**: Ambil actual consumption dan status dari PLC
   - **Sync**: Update database dengan data real-time dari PLC
+- **Data Protection**: Manufacturing orders yang sudah selesai (status_manufacturing = 1) dilindungi dari overwrite
+- **Cancel Batch Management**: Cancel dan archive batch yang gagal atau tidak jadi diproses (no retry needed)
 - **Memory Mapping**: 
   - MASTER_BATCH_REFERENCE.json untuk write operations (D7000-D7418)
   - READ_DATA_PLC_MAPPING.json untuk read operations (D6001-D6058)
-- **Smart Update**: Change detection - hanya update jika data berubah
+- **Smart Update**: Change detection - hanya update jika data berubah dan manufacturing masih in-progress
 - **JSON-RPC Client**: Komunikasi dengan Odoo menggunakan XML-RPC over JSON
 - **Database Storage**: PostgreSQL dengan tracking actual consumption per silo
 - **RESTful API**: FastAPI endpoints untuk CRUD operations
@@ -692,6 +694,25 @@ Comprehensive documentation tersedia:
   - Expected Results & Verification
   - Troubleshooting Testing Issues
   - Advanced Testing Scenarios
+
+### Feature-Specific Documentation
+- **[CANCEL_BATCH_GUIDE.md](CANCEL_BATCH_GUIDE.md)** - Cancel batch management
+  - When to use cancel batch
+  - API endpoint documentation
+  - Workflow and database changes
+  - Usage examples and best practices
+- **[ENHANCED_SCHEDULER_GUIDE.md](ENHANCED_SCHEDULER_GUIDE.md)** - Scheduler system
+  - 4 periodic background tasks
+  - Monitoring and manual control endpoints
+  - Configuration and troubleshooting
+- **[DATABASE_PERSISTENCE_GUIDE.md](DATABASE_PERSISTENCE_GUIDE.md)** - Data protection logic
+  - Manufacturing completed protection
+  - Protection scenarios and examples
+- **[CONSUMPTION_API_GUIDE.md](CONSUMPTION_API_GUIDE.md)** - Consumption update API
+  - Odoo consumption endpoints
+  - Method comparison and usage
+- **[AUTO_SYNC_README.md](AUTO_SYNC_README.md)** - Auto-sync workflow
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - System architecture
 
 **Quick Start Testing:**
 1. Populate PLC: `python test_write_read_area.py`

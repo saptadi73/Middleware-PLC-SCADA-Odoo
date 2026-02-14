@@ -136,10 +136,39 @@ service = OdooConsumptionService(db=db_session)
 
 - If no DB session provided, persistence is skipped (soft-fail)
 
+#### Data Protection Logic
+
+**IMPORTANT: Manufacturing Completed Protection**
+
+Database updates are **protected from overwriting completed manufacturing orders**:
+
+- ✅ **Update allowed**: `status_manufacturing = 0` (False) - Manufacturing in progress
+- ❌ **Update blocked**: `status_manufacturing = 1` (True) - Manufacturing already completed
+
+**Why this matters:**
+- Prevents PLC read cycles from overwriting final/completed data
+- Protects historical records after manufacturing is done
+- Ensures data integrity for completed orders
+
+**Implementation in both services:**
+- `odoo_consumption_service.py::_save_consumption_to_db()`
+- `plc_sync_service.py::_update_batch_if_changed()`
+
+```python
+# Check if already completed
+current_status_mfg: bool = mo_batch.status_manufacturing
+if current_status_mfg:
+    logger.info(f"Skip update for MO {mo_id}: status_manufacturing already completed (1)")
+    return False
+
+# Proceed with update only if manufacturing is still in progress
+```
+
 #### Helper Methods
 
 1. **`_save_consumption_to_db()`**
    - Called after successful consumption update to Odoo
+   - **Checks `status_manufacturing` first** - skips if already completed
    - Converts Odoo codes back to SCADA tags
    - Updates `actual_consumption_*` fields
    - Atomic transaction with rollback on error
@@ -147,6 +176,7 @@ service = OdooConsumptionService(db=db_session)
 2. **`_save_mark_done_to_db()`**
    - Called after successful mark-done to Odoo
    - Updates status and finished qty fields
+   - Sets `status_manufacturing = True` (locks further updates)
    - Atomic transaction with rollback on error
 
 ### API Routes
@@ -218,6 +248,27 @@ Response: db_saved = true
 ↓
 Data in BOTH Odoo and DB ✓ (synchronized)
 ```
+
+### Scenario 4: Manufacturing Already Completed (Protection)
+```
+PLC Read/Consumption Update Request
+↓
+Check Database: status_manufacturing = 1 (True)
+↓
+Skip Update (Protection Triggered)
+↓
+Log: "Skip update for MO {mo_id}: status_manufacturing already completed (1)"
+↓
+Return: db_saved = false (no changes made)
+↓
+Data Preserved ✓ (completed order protected)
+```
+
+**Why this scenario matters:**
+- PLC may continue reading memory after MO is completed
+- Scheduled sync jobs might attempt to update completed records
+- Protection ensures final/historical data is never overwritten
+- Maintains data integrity for reporting and audit trails
 
 ---
 

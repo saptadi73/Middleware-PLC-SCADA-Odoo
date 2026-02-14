@@ -254,6 +254,16 @@ class PLCSyncService:
         Returns:
             True if any field was updated, False otherwise
         """
+        # Check if status_manufacturing is already 1 (True)
+        # If manufacturing is done, skip update to prevent overwriting completed data
+        current_status_mfg: bool = batch.status_manufacturing  # type: ignore
+        if current_status_mfg:
+            logger.info(
+                f"Skip update for MO {batch.mo_id}: "
+                f"status_manufacturing already completed (1)"
+            )
+            return False
+
         changed = False
 
         # Support both old and new payload shapes from PLCReadService.

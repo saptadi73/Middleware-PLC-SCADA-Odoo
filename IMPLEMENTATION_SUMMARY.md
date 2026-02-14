@@ -400,6 +400,8 @@ Final Result:
 
 ✅ **Error Resilience**: Jika update 1 silo gagal, tetap lanjut untuk silo lainnya
 
+✅ **Data Protection**: Completed manufacturing orders (status_manufacturing = 1) dilindungi dari overwrite oleh PLC read cycles
+
 ✅ **Silo Mapping**: Auto-load dari silo_data.json, support lookup by ID atau SCADA tag
 
 ✅ **Comprehensive Logging**: Setiap operation log dengan detail untuk audit trail
@@ -409,6 +411,45 @@ Final Result:
 ✅ **Singleton Pattern**: Service instances di-cache untuk efficiency
 
 ✅ **Backward Compatible**: Existing PLC sync methods tetap work, methods baru optional
+
+### Data Protection Logic
+
+**Manufacturing Completed Protection** - Mencegah overwrite data yang sudah final:
+
+- Database updates **hanya dilakukan** jika `status_manufacturing = 0` (manufacturing masih berjalan)
+- Updates **di-skip** jika `status_manufacturing = 1` (manufacturing sudah selesai)
+- Implemented di:
+  - `odoo_consumption_service.py::_save_consumption_to_db()`
+  - `plc_sync_service.py::_update_batch_if_changed()`
+
+**Why this matters:**
+- PLC read cycles terus berjalan bahkan setelah MO selesai
+- Scheduled sync jobs mungkin mencoba update completed records
+- Protection memastikan data final/historical tidak ter-overwrite
+- Menjaga integritas data untuk reporting dan audit trails
+
+### Cancel Batch Feature
+
+**Cancellation Management** - Handle batch yang gagal atau tidak jadi diproses:
+
+- **Endpoint**: `POST /admin/manual/cancel-batch/{batch_no}`
+- **Status**: Batch di-move ke `mo_histories` dengan status `"cancelled"`
+- **Notes**: Support catatan/alasan cancellation untuk audit trail
+- **Atomic**: Move to history + delete from mo_batch dalam single transaction
+- **Auto-excluded**: Cancelled batches otomatis excluded dari Task 1 count
+
+**Use Cases:**
+- Material quality issues yang tidak bisa di-fix
+- Data errors yang persistent setelah multiple retries
+- Operational decisions untuk skip batch tertentu
+- Emergency stop untuk batch bermasalah
+
+**Database Changes:**
+- Added `status` column to `mo_histories` (values: completed/failed/cancelled)
+- Added `notes` column to `mo_histories` for cancellation reasons
+- Migration: `20260214_0010_add_status_column_to_histories.py`
+
+**See**: [CANCEL_BATCH_GUIDE.md](CANCEL_BATCH_GUIDE.md) for complete documentation
 
 ---
 
