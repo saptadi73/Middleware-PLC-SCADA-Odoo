@@ -100,7 +100,7 @@ class PLCWriteService:
 
         return id_fields, consumption_fields
     
-    def _convert_to_words(self, value: Any, data_type: str, length: Optional[float] = None, scale: Optional[float] = None) -> List[int]:
+    def _convert_to_words(self, value: Any, data_type: str, length: Optional[float] = None, scale: Optional[float] = None, word_count: Optional[int] = None) -> List[int]:
         """
         Convert Python value ke list of 16-bit words untuk PLC.
         
@@ -109,6 +109,7 @@ class PLCWriteService:
             data_type: "REAL", "ASCII", atau "boolean"
             length: Length dari data (untuk ASCII)
             scale: Scale factor (untuk REAL)
+            word_count: Expected number of words (for multi-word values)
         
         Returns:
             List of 16-bit integer values
@@ -132,13 +133,25 @@ class PLCWriteService:
                 except (ValueError, TypeError):
                     raise ValueError(f"Cannot convert {value} to REAL")
             
-            # Ensure 16-bit signed integer range
-            if int_value < -32768 or int_value > 32767:
-                # If out of signed range, check unsigned range
-                if int_value < 0 or int_value > 65535:
-                    raise ValueError(f"Value {int_value} out of 16-bit range")
-            
-            return [int_value]
+            # Determine if multi-word is needed
+            # If word_count expected is 2+, use 32-bit signed integer (2 words)
+            if word_count and word_count >= 2:
+                # 32-bit signed range: -2147483648 to 2147483647
+                if int_value < -2147483648 or int_value > 2147483647:
+                    raise ValueError(f"Value {int_value} out of 32-bit range")
+                
+                # Split into 2 words (big-endian): high word, low word
+                # For positive: high = value >> 16, low = value & 0xFFFF
+                high_word = (int_value >> 16) & 0xFFFF
+                low_word = int_value & 0xFFFF
+                
+                return [high_word, low_word]
+            else:
+                # Single word (16-bit) - use signed range
+                if int_value < -32768 or int_value > 32767:
+                    raise ValueError(f"Value {int_value} out of 16-bit signed range [-32768, 32767]")
+                
+                return [int_value & 0xFFFF]
         
         elif data_type == "ASCII":
             # ASCII -> bytes, 2 bytes per word (big-endian)
@@ -199,11 +212,15 @@ class PLCWriteService:
         length = field_def.get("length")
         scale = field_def.get("scale")
         
-        words = self._convert_to_words(value, data_type, length, scale)
+        # Pass expected word count for proper multi-word handling
+        words = self._convert_to_words(value, data_type, length, scale, word_count=expected_count)
         
         # Validate word count
         if len(words) != expected_count:
-            logger.warning(
+            # Use debug level for known cases where padding is expected
+            log_level = logging.DEBUG if len(words) < expected_count else logging.WARNING
+            logger.log(
+                log_level,
                 f"Word count mismatch for {field_name}: expected {expected_count}, got {len(words)}. "
                 f"Adjusting to match expected count."
             )
@@ -220,39 +237,75 @@ class PLCWriteService:
     
     def write_batch(self, batch_name: str, data: Dict[str, Any]) -> None:
         """
-        Write multiple fields ke PLC untuk satu batch.
+        Write multiple fields ke PLC untuk satu batch mengikuti MASTER_BATCH_REFERENCE.json.
         
         Args:
             batch_name: Nama batch (e.g., "BATCH01")
             data: Dictionary dengan key=field_name, value=data
         
+        Field names HARUS match dengan "Informasi" field di MASTER_BATCH_REFERENCE.json
+        
         Example:
             write_batch("BATCH01", {
                 "BATCH": 1,
                 "NO-MO": "WH/MO/00002",
-                "NO-BoM": "JF PLUS 25",
+                "NO-BoM": "JF SUPER 2A 25",
+                "finished_goods": "JF SUPER 2A 25",
+                "Quantity Goods_id": 2000000,
                 "SILO ID 101 (SILO BESAR)": 101,
-                "SILO 1 Consumption": 825.0,
+                "SILO ID 101 Consumption": 14415,
+                ...
             })
         """
         if batch_name not in self.mapping:
-            raise ValueError(f"Batch {batch_name} not found in mapping")
+            raise ValueError(f"Batch {batch_name} not found in MASTER_BATCH_REFERENCE mapping")
         
         success_count = 0
         error_count = 0
+        skipped_count = 0
+        
+        logger.info(f"[{batch_name}] Writing {len(data)} fields to PLC...")
         
         for field_name, value in data.items():
             try:
+                # Find field in mapping
+                field_def = None
+                for item in self.mapping[batch_name]:
+                    if item["Informasi"] == field_name:
+                        field_def = item
+                        break
+                
+                if not field_def:
+                    logger.warning(
+                        f"[{batch_name}] Field '{field_name}' not found in MASTER_BATCH_REFERENCE mapping. "
+                        f"Available fields: {[item['Informasi'] for item in self.mapping[batch_name]]}"
+                    )
+                    skipped_count += 1
+                    continue
+                
+                # Write field
                 self.write_field(batch_name, field_name, value)
                 success_count += 1
+                
             except Exception as exc:
-                logger.error(f"Error writing {field_name}: {exc}")
+                logger.error(
+                    f"[{batch_name}] Error writing field '{field_name}' with value {value}: {exc}",
+                    exc_info=True
+                )
                 error_count += 1
         
         logger.info(
-            f"Batch {batch_name} write completed: "
-            f"{success_count} success, {error_count} errors"
+            f"[{batch_name}] Write completed: "
+            f"✓ {success_count} success, "
+            f"⚠ {skipped_count} skipped, "
+            f"✗ {error_count} errors"
         )
+        
+        if error_count > 0:
+            raise RuntimeError(
+                f"Failed to write {batch_name}: {error_count} field(s) failed. "
+                f"Check logs for details."
+            )
     
     def _write_to_plc(self, address: int, values: List[int]) -> None:
         """
@@ -288,18 +341,30 @@ class PLCWriteService:
     
     def write_mo_batch_to_plc(self, mo_batch_data: Dict[str, Any], batch_number: int = 1) -> None:
         """
-        Write data dari mo_batch table ke PLC.
+        Write data dari mo_batch table ke PLC mengikuti MASTER_BATCH_REFERENCE.json mapping.
         
         Args:
             mo_batch_data: Dictionary dengan data dari mo_batch table
-            batch_number: Nomor batch (1-30) untuk menentukan BATCH01-BATCH30
+            batch_number: Nomor batch (1-30) yang menentukan BATCH01-BATCH30
+        
+        Field mapping:
+            - BATCH: Nomor slot batch (1-30)
+            - NO-MO: Manufacturing Order ID (ASCII 16 chars)
+            - NO-BoM: Bill of Materials / Finished Goods (ASCII 16 chars)
+            - finished_goods: Nama finished goods (ASCII 16 chars)
+            - Quantity Goods_id: Target quantity (REAL)
+            - SILO ID 101-113: Silo IDs per silo (REAL)
+            - SILO ID XX Consumption: Target consumption per silo (REAL)
+            - status_manufacturing: Status selesai (0/1)
+            - Status Operation: Status operasi (0/1)
+            - weight_finished_good: Actual weight hasil (REAL)
         """
         if batch_number < 1 or batch_number > 30:
             raise ValueError(f"Batch number must be 1-30, got {batch_number}")
         
         batch_name = f"BATCH{batch_number:02d}"
         
-        # Build PLC write data
+        # Build PLC write data following MASTER_BATCH_REFERENCE.json mapping
         # Truncate strings to 16 chars for ASCII fields (8 words max)
         mo_id = str(mo_batch_data.get("mo_id", ""))[:16]
         finished_goods = str(mo_batch_data.get("finished_goods") or mo_batch_data.get("mo_id", ""))[:16]
@@ -318,31 +383,50 @@ class PLCWriteService:
         for idx, letter in enumerate(silo_letters):
             silo_number = 101 + idx
 
-            # Silo ID field name from reference
+            # Silo ID field name from reference (e.g., "SILO ID 101 (SILO BESAR)")
             silo_id_field = silo_id_fields.get(silo_number)
             if silo_id_field:
                 silo_value = mo_batch_data.get(f"silo_{letter}", silo_number)
                 plc_data[silo_id_field] = silo_value
+                logger.debug(f"Set {silo_id_field} = {silo_value}")
             else:
-                logger.warning("Silo ID field not found for %s in %s", silo_number, batch_name)
+                logger.debug(f"Silo ID field not found for {silo_number} in {batch_name}")
 
-            # Silo Consumption field name from reference
+            # Silo Consumption field name from reference (e.g., "SILO ID 101 Consumption")
             consumption_field = consumption_fields.get(silo_number)
             if consumption_field:
                 consumption_value = mo_batch_data.get(f"consumption_silo_{letter}", 0)
                 plc_data[consumption_field] = float(consumption_value) if consumption_value else 0
+                logger.debug(f"Set {consumption_field} = {plc_data[consumption_field]}")
             else:
-                logger.warning("Silo consumption field not found for %s in %s", silo_number, batch_name)
+                logger.debug(f"Silo consumption field not found for {silo_number} in {batch_name}")
         
-        # Status fields
-        plc_data["status manufaturing"] = mo_batch_data.get("status_manufacturing", False)
-        plc_data["Status Operation"] = mo_batch_data.get("status_operation", False)
-        plc_data["weight_finished_good"] = mo_batch_data.get("actual_weight_quantity_finished_goods", 0)
+        # Write status fields (Note: field names must match MASTER_BATCH_REFERENCE exactly)
+        # Check mapping for actual field names
+        for item in self.mapping.get(batch_name, []):
+            info = item.get("Informasi", "").lower()
+            
+            if "status" in info and "manufacturing" in info:
+                plc_data[item["Informasi"]] = mo_batch_data.get("status_manufacturing", False)
+                logger.debug(f"Set status field: {item['Informasi']} = {plc_data[item['Informasi']]}")
+            
+            if "status" in info and "operation" in info:
+                plc_data[item["Informasi"]] = mo_batch_data.get("status_operation", False)
+                logger.debug(f"Set operation field: {item['Informasi']} = {plc_data[item['Informasi']]}")
+            
+            if "weight" in info and "finished" in info:
+                plc_data[item["Informasi"]] = mo_batch_data.get("actual_weight_quantity_finished_goods", 0)
+                logger.debug(f"Set weight field: {item['Informasi']} = {plc_data[item['Informasi']]}")
         
         # Write to PLC
         self.write_batch(batch_name, plc_data)
         
-        logger.info(f"MO batch data written to PLC {batch_name}: mo_id={mo_batch_data.get('mo_id')}")
+        logger.info(
+            f"✓ MO batch data written to PLC {batch_name}: "
+            f"mo_id={mo_batch_data.get('mo_id')}, "
+            f"batch={batch_number}/30, "
+            f"fields={len(plc_data)}"
+        )
 
 
 # Singleton instance

@@ -77,6 +77,25 @@ class OdooConsumptionService:
         except Exception as e:
             logger.error(f"Error loading silo mapping: {e}")
 
+    def _log_odoo_response(
+        self, endpoint: str, response: httpx.Response
+    ) -> None:
+        try:
+            payload = response.json()
+            logger.info(
+                "Odoo response %s status=%s body=%s",
+                endpoint,
+                response.status_code,
+                payload,
+            )
+        except ValueError:
+            logger.info(
+                "Odoo response %s status=%s text=%s",
+                endpoint,
+                response.status_code,
+                response.text,
+            )
+
     async def _authenticate(self) -> Optional[httpx.AsyncClient]:
         """
         Authenticate dengan Odoo dan return client dengan session cookie.
@@ -87,6 +106,12 @@ class OdooConsumptionService:
         try:
             base_url = self.settings.odoo_base_url.rstrip("/")
             auth_url = f"{base_url}/api/scada/authenticate"
+            logger.info(
+                "Odoo auth attempt: url=%s db=%s user=%s",
+                auth_url,
+                self.settings.odoo_db,
+                self.settings.odoo_username,
+            )
 
             auth_payload = {
                 "db": self.settings.odoo_db,
@@ -115,7 +140,7 @@ class OdooConsumptionService:
                 cookies = response.cookies
                 new_client = httpx.AsyncClient(timeout=30.0)
                 new_client.cookies.update(cookies)
-                logger.info(f"✓ Authenticated with Odoo successfully")
+                logger.info("✓ Authenticated with Odoo successfully")
                 return new_client
 
         except Exception as e:
@@ -153,6 +178,9 @@ class OdooConsumptionService:
         """
         client = await self._authenticate()
         if not client:
+            logger.error(
+                "Failed to authenticate to Odoo; cannot call update-with-consumptions"
+            )
             return {
                 "success": False,
                 "error": "Failed to authenticate with Odoo",
@@ -199,6 +227,11 @@ class OdooConsumptionService:
                         )
 
             if not converted_data:
+                logger.warning(
+                    "No valid consumption entries after conversion for MO %s. "
+                    "Check silo mapping, consumption values, and scada_tag keys.",
+                    mo_id,
+                )
                 return {
                     "success": False,
                     "error": (
@@ -219,10 +252,15 @@ class OdooConsumptionService:
             payload.update(converted_data)
 
             logger.info(
-                f"Sending to /mo/update-with-consumptions: {payload}"
+                "Sending to /mo/update-with-consumptions: mo_id=%s keys=%s quantity=%s",
+                mo_id,
+                list(converted_data.keys()),
+                payload.get("quantity"),
             )
+            logger.debug(f"Complete payload to /update-with-consumptions: {payload}")
 
             response = await client.post(update_endpoint, json=payload)
+            self._log_odoo_response(update_endpoint, response)
             response.raise_for_status()
 
             raw_data = response.json()
@@ -479,6 +517,7 @@ class OdooConsumptionService:
                     response = await client.post(
                         consumption_url, json=payload
                     )
+                    self._log_odoo_response(consumption_url, response)
                     response.raise_for_status()
 
                     result_data = response.json()
@@ -628,6 +667,7 @@ class OdooConsumptionService:
                 payload["message"] = message
 
             response = await client.post(mark_done_url, json=payload)
+            self._log_odoo_response(mark_done_url, response)
             response.raise_for_status()
 
             raw_data = response.json()
@@ -720,6 +760,14 @@ class OdooConsumptionService:
                                 f"Cannot convert {silo_tag} to odoo_code, skipping"
                             )
 
+            logger.info(
+                "process_batch_consumption: mo_id=%s equipment_id=%s status_mfg=%s",
+                mo_id,
+                equipment_id,
+                batch_data.get("status_manufacturing"),
+            )
+            logger.debug("process_batch_consumption payload keys: %s", list(batch_data.keys()))
+
             # Step 1: Update consumption using efficient endpoint
             # (/api/scada/mo/update-with-consumptions - single call)
             update_result = {
@@ -728,15 +776,30 @@ class OdooConsumptionService:
             }
 
             if consumption_entries:
+                # Extract quantity (actual_weight_finished_good) untuk update stock.move.line
+                quantity = batch_data.get("actual_weight_quantity_finished_goods")
+                if quantity is not None:
+                    try:
+                        quantity = float(quantity)
+                    except (TypeError, ValueError):
+                        quantity = None
+                
                 update_result[
                     "consumption_details"
                 ] = await self.update_consumption_with_odoo_codes(
                     mo_id=mo_id,
                     consumption_data=consumption_entries,
+                    quantity=quantity,
                 )
                 update_result["consumption_updated"] = update_result[
                     "consumption_details"
                 ].get("success", False)
+            else:
+                logger.warning(
+                    "No consumption entries to send for MO %s. "
+                    "All values <=0 or missing in batch_data.",
+                    mo_id,
+                )
 
             # Step 2: Optional mark done (disabled by default)
             mark_done_result = {

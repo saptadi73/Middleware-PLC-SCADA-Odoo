@@ -254,7 +254,7 @@ Response:
 }
 ```
 
-**Note**: Scale factor (10.0) otomatis diterapkan untuk REAL values.
+**Note**: Scale factor (100.0) otomatis diterapkan untuk REAL values.
 
 ### 4. Read All Fields
 
@@ -513,7 +513,7 @@ Memory mapping reference untuk PLC read operations:
       "No": 6,
       "Informasi": "SILO 1 Consumption",
       "Data Type": "REAL",
-      "scale": 10.0,
+      "scale": 100.0,
       "DM - Memory": "D6027"
     },
     ...
@@ -526,14 +526,14 @@ Memory mapping reference untuk PLC read operations:
 - **Address Range**: D6001 - D6058
 - **Data Types**: ASCII, REAL (with scale factor), boolean
 - **Scale Factors**: 
-  - Consumption: 10.0 (nilai PLC 8250 = 825.0 kg)
+  - Consumption: 100.0 (nilai PLC 82500 = 825.0 kg)
   - Quantity: 1.0 (no scaling)
 
 **Field Mapping:**
 - D6001-6008: NO-MO (ASCII, 16 chars)
 - D6017-6024: finished_goods (ASCII, 16 chars)
 - D6025: Quantity Goods_id (REAL, scale=1.0)
-- D6027, D6029, D6031, ..., D6051: Silo Consumptions (REAL, scale=10.0)
+- D6027, D6029, D6031, ..., D6051: Silo Consumptions (REAL, scale=100.0)
 - D6056: status manufaturing (boolean)
 - D6057: Status Operation (boolean)
 - D6058: weight_finished_good (REAL, scale=1.0)

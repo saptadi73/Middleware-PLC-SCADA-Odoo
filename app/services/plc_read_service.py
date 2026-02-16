@@ -102,12 +102,16 @@ class PLCReadService:
             if not words:
                 return 0.0
             
-            raw_value = words[0]
+            # Handle both 1-word and 2-word REAL values
+            if len(words) >= 2:
+                # 32-bit value stored in 2 words (big-endian)
+                raw_value = (words[0] << 16) | words[1]
+            else:
+                # Single 16-bit word value
+                raw_value = words[0]
             
-            # Handle signed 16-bit integer
-            if raw_value > 32767:
-                raw_value = raw_value - 65536
-            
+            # ✓ Keep as UNSIGNED (0-4294967295 for 32-bit)
+            # All consumption & quantity values are positive
             scale = scale if scale else 1.0
             return float(raw_value) / scale
         

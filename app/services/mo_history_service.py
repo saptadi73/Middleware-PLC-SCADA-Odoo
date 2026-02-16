@@ -24,6 +24,85 @@ class MOHistoryService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _build_history_record(
+        self,
+        mo_batch: TableSmoBatch,
+        status: str,
+        notes: Optional[str],
+    ) -> TableSmoHistory:
+        """Build history record without persisting it."""
+        return TableSmoHistory(
+            batch_no=mo_batch.batch_no,
+            mo_id=mo_batch.mo_id,
+            consumption=mo_batch.consumption,
+            equipment_id_batch=mo_batch.equipment_id_batch,
+            finished_goods=mo_batch.finished_goods,
+            # Silo IDs
+            silo_a=mo_batch.silo_a,
+            silo_b=mo_batch.silo_b,
+            silo_c=mo_batch.silo_c,
+            silo_d=mo_batch.silo_d,
+            silo_e=mo_batch.silo_e,
+            silo_f=mo_batch.silo_f,
+            silo_g=mo_batch.silo_g,
+            silo_h=mo_batch.silo_h,
+            silo_i=mo_batch.silo_i,
+            silo_j=mo_batch.silo_j,
+            silo_k=mo_batch.silo_k,
+            silo_l=mo_batch.silo_l,
+            silo_m=mo_batch.silo_m,
+            # Component names
+            component_silo_a_name=mo_batch.component_silo_a_name,
+            component_silo_b_name=mo_batch.component_silo_b_name,
+            component_silo_c_name=mo_batch.component_silo_c_name,
+            component_silo_d_name=mo_batch.component_silo_d_name,
+            component_silo_e_name=mo_batch.component_silo_e_name,
+            component_silo_f_name=mo_batch.component_silo_f_name,
+            component_silo_g_name=mo_batch.component_silo_g_name,
+            component_silo_h_name=mo_batch.component_silo_h_name,
+            component_silo_i_name=mo_batch.component_silo_i_name,
+            component_silo_j_name=mo_batch.component_silo_j_name,
+            component_silo_k_name=mo_batch.component_silo_k_name,
+            component_silo_l_name=mo_batch.component_silo_l_name,
+            component_silo_m_name=mo_batch.component_silo_m_name,
+            # Planned consumption
+            consumption_silo_a=mo_batch.consumption_silo_a,
+            consumption_silo_b=mo_batch.consumption_silo_b,
+            consumption_silo_c=mo_batch.consumption_silo_c,
+            consumption_silo_d=mo_batch.consumption_silo_d,
+            consumption_silo_e=mo_batch.consumption_silo_e,
+            consumption_silo_f=mo_batch.consumption_silo_f,
+            consumption_silo_g=mo_batch.consumption_silo_g,
+            consumption_silo_h=mo_batch.consumption_silo_h,
+            consumption_silo_i=mo_batch.consumption_silo_i,
+            consumption_silo_j=mo_batch.consumption_silo_j,
+            consumption_silo_k=mo_batch.consumption_silo_k,
+            consumption_silo_l=mo_batch.consumption_silo_l,
+            consumption_silo_m=mo_batch.consumption_silo_m,
+            # Actual consumption from PLC
+            actual_consumption_silo_a=mo_batch.actual_consumption_silo_a,
+            actual_consumption_silo_b=mo_batch.actual_consumption_silo_b,
+            actual_consumption_silo_c=mo_batch.actual_consumption_silo_c,
+            actual_consumption_silo_d=mo_batch.actual_consumption_silo_d,
+            actual_consumption_silo_e=mo_batch.actual_consumption_silo_e,
+            actual_consumption_silo_f=mo_batch.actual_consumption_silo_f,
+            actual_consumption_silo_g=mo_batch.actual_consumption_silo_g,
+            actual_consumption_silo_h=mo_batch.actual_consumption_silo_h,
+            actual_consumption_silo_i=mo_batch.actual_consumption_silo_i,
+            actual_consumption_silo_j=mo_batch.actual_consumption_silo_j,
+            actual_consumption_silo_k=mo_batch.actual_consumption_silo_k,
+            actual_consumption_silo_l=mo_batch.actual_consumption_silo_l,
+            actual_consumption_silo_m=mo_batch.actual_consumption_silo_m,
+            # Status
+            status_manufacturing=mo_batch.status_manufacturing,
+            status_operation=mo_batch.status_operation,
+            actual_weight_quantity_finished_goods=mo_batch.actual_weight_quantity_finished_goods,
+            last_read_from_plc=mo_batch.last_read_from_plc,
+            # History metadata
+            status=status,
+            notes=notes,
+        )
+
     def move_to_history(
         self,
         mo_batch: TableSmoBatch,
@@ -42,78 +121,7 @@ class MOHistoryService:
             TableSmoHistory record jika berhasil, None jika gagal
         """
         try:
-            # Create history record dengan copy semua field dari batch
-            history = TableSmoHistory(
-                batch_no=mo_batch.batch_no,
-                mo_id=mo_batch.mo_id,
-                consumption=mo_batch.consumption,
-                equipment_id_batch=mo_batch.equipment_id_batch,
-                finished_goods=mo_batch.finished_goods,
-                # Silo IDs
-                silo_a=mo_batch.silo_a,
-                silo_b=mo_batch.silo_b,
-                silo_c=mo_batch.silo_c,
-                silo_d=mo_batch.silo_d,
-                silo_e=mo_batch.silo_e,
-                silo_f=mo_batch.silo_f,
-                silo_g=mo_batch.silo_g,
-                silo_h=mo_batch.silo_h,
-                silo_i=mo_batch.silo_i,
-                silo_j=mo_batch.silo_j,
-                silo_k=mo_batch.silo_k,
-                silo_l=mo_batch.silo_l,
-                silo_m=mo_batch.silo_m,
-                # Component names
-                component_silo_a_name=mo_batch.component_silo_a_name,
-                component_silo_b_name=mo_batch.component_silo_b_name,
-                component_silo_c_name=mo_batch.component_silo_c_name,
-                component_silo_d_name=mo_batch.component_silo_d_name,
-                component_silo_e_name=mo_batch.component_silo_e_name,
-                component_silo_f_name=mo_batch.component_silo_f_name,
-                component_silo_g_name=mo_batch.component_silo_g_name,
-                component_silo_h_name=mo_batch.component_silo_h_name,
-                component_silo_i_name=mo_batch.component_silo_i_name,
-                component_silo_j_name=mo_batch.component_silo_j_name,
-                component_silo_k_name=mo_batch.component_silo_k_name,
-                component_silo_l_name=mo_batch.component_silo_l_name,
-                component_silo_m_name=mo_batch.component_silo_m_name,
-                # Planned consumption
-                consumption_silo_a=mo_batch.consumption_silo_a,
-                consumption_silo_b=mo_batch.consumption_silo_b,
-                consumption_silo_c=mo_batch.consumption_silo_c,
-                consumption_silo_d=mo_batch.consumption_silo_d,
-                consumption_silo_e=mo_batch.consumption_silo_e,
-                consumption_silo_f=mo_batch.consumption_silo_f,
-                consumption_silo_g=mo_batch.consumption_silo_g,
-                consumption_silo_h=mo_batch.consumption_silo_h,
-                consumption_silo_i=mo_batch.consumption_silo_i,
-                consumption_silo_j=mo_batch.consumption_silo_j,
-                consumption_silo_k=mo_batch.consumption_silo_k,
-                consumption_silo_l=mo_batch.consumption_silo_l,
-                consumption_silo_m=mo_batch.consumption_silo_m,
-                # Actual consumption from PLC
-                actual_consumption_silo_a=mo_batch.actual_consumption_silo_a,
-                actual_consumption_silo_b=mo_batch.actual_consumption_silo_b,
-                actual_consumption_silo_c=mo_batch.actual_consumption_silo_c,
-                actual_consumption_silo_d=mo_batch.actual_consumption_silo_d,
-                actual_consumption_silo_e=mo_batch.actual_consumption_silo_e,
-                actual_consumption_silo_f=mo_batch.actual_consumption_silo_f,
-                actual_consumption_silo_g=mo_batch.actual_consumption_silo_g,
-                actual_consumption_silo_h=mo_batch.actual_consumption_silo_h,
-                actual_consumption_silo_i=mo_batch.actual_consumption_silo_i,
-                actual_consumption_silo_j=mo_batch.actual_consumption_silo_j,
-                actual_consumption_silo_k=mo_batch.actual_consumption_silo_k,
-                actual_consumption_silo_l=mo_batch.actual_consumption_silo_l,
-                actual_consumption_silo_m=mo_batch.actual_consumption_silo_m,
-                # Status
-                status_manufacturing=mo_batch.status_manufacturing,
-                status_operation=mo_batch.status_operation,
-                actual_weight_quantity_finished_goods=mo_batch.actual_weight_quantity_finished_goods,
-                last_read_from_plc=mo_batch.last_read_from_plc,
-                # History metadata
-                status=status,
-                notes=notes,
-            )
+            history = self._build_history_record(mo_batch, status=status, notes=notes)
 
             self.db.add(history)
             self.db.commit()
@@ -130,6 +138,44 @@ class MOHistoryService:
             logger.error(f"Error moving MO {mo_batch.mo_id} to history: {e}")
             self.db.rollback()
             return None
+
+    def archive_batch(
+        self,
+        mo_batch: TableSmoBatch,
+        status: str = "completed",
+        notes: Optional[str] = None,
+        mark_synced: bool = False,
+    ) -> bool:
+        """
+        Archive batch ke history dan delete dari mo_batch dalam satu transaksi.
+
+        Args:
+            mo_batch: Record dari mo_batch yang akan di-archive
+            status: Status history ("completed", "failed", "cancelled")
+            notes: Catatan tambahan (optional)
+            mark_synced: Jika True, set update_odoo=True sebelum delete
+
+        Returns:
+            True jika berhasil, False jika gagal
+        """
+        try:
+            history = self._build_history_record(mo_batch, status=status, notes=notes)
+            self.db.add(history)
+            if mark_synced:
+                mo_batch.update_odoo = True  # type: ignore
+            self.db.delete(mo_batch)
+            self.db.commit()
+
+            logger.info(
+                f"✓ Archived MO {mo_batch.mo_id} (batch {mo_batch.batch_no}) "
+                f"to history with status: {status}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Error archiving MO {mo_batch.mo_id} to history: {e}")
+            self.db.rollback()
+            return False
 
     def delete_from_batch(self, mo_batch: TableSmoBatch) -> bool:
         """

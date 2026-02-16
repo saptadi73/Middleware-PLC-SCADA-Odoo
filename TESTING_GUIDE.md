@@ -167,10 +167,10 @@ python -m uvicorn app.main:app --reload
 
 **Important Notes:**
 
-1. **Scale Factor**: Consumption fields menggunakan scale 10.0
+1. **Scale Factor**: Consumption fields menggunakan scale 100.0
    - Database value: `825.5` kg
-   - PLC value: `8255` (825.5 × 10)
-   - When reading back: PLC `8255` ÷ 10 = `825.5` kg
+   - PLC value: `82550` (825.5 × 100)
+   - When reading back: PLC `82550` ÷ 100 = `825.5` kg
 
 2. **ASCII Encoding**: 2 characters per word, big-endian
    - "WH/MO/00002" → 8 words (16 bytes)
@@ -299,7 +299,7 @@ python test_plc_read.py
 
 [4] Read Silo Consumption (with scale)
 ✓ SILO 1 Consumption: 825.5 kg
-   (PLC value: 8255, scale: 10.0)
+   (PLC value: 82550, scale: 100.0)
 
 [5] Read All Fields
 ✓ Total fields: 33
@@ -699,8 +699,8 @@ with open('app/reference/READ_DATA_PLC_MAPPING.json') as f:
 
 Expected output:
 ```
-SILO 1 Consumption: scale=10.0
-SILO 2 Consumption: scale=10.0
+SILO 1 Consumption: scale=100.0
+SILO 2 Consumption: scale=100.0
 ...
 ```
 

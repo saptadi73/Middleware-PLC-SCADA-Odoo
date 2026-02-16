@@ -41,8 +41,11 @@ class PLCSyncService:
             # Read all data from PLC
             plc_data = self.plc_read_service.read_batch_data()
 
-            # Extract MO_ID from PLC
-            mo_id = plc_data.get("mo_id", "").strip()
+            # Extract MO_ID from PLC (handle None values from failed reads)
+            mo_id = plc_data.get("mo_id") or None
+            if mo_id:
+                mo_id = mo_id.strip() if isinstance(mo_id, str) else None
+            
             if not mo_id:
                 return {
                     "success": False,
@@ -255,12 +258,14 @@ class PLCSyncService:
             True if any field was updated, False otherwise
         """
         # Check if status_manufacturing is already 1 (True)
-        # If manufacturing is done, skip update to prevent overwriting completed data
+        # If manufacturing is COMPLETED, skip ALL updates
+        # This prevents interfering with the completion workflow
         current_status_mfg: bool = batch.status_manufacturing  # type: ignore
         if current_status_mfg:
             logger.info(
                 f"Skip update for MO {batch.mo_id}: "
-                f"status_manufacturing already completed (1)"
+                f"status_manufacturing already completed (1). "
+                f"Batch is being/been processed for Odoo completion."
             )
             return False
 
@@ -276,14 +281,14 @@ class PLCSyncService:
 
         # Map silo letters to consumption values from PLC
         silo_map = {
-            "a": "SILO 1 Consumption",
-            "b": "SILO 2 Consumption",
+            "a": "SILO ID 101 Consumption",
+            "b": "SILO ID 102 Consumption",
             "c": "SILO ID 103 Consumption",
             "d": "SILO ID 104 Consumption",
             "e": "SILO ID 105 Consumption",
-            "f": "SILO ID 106  Consumption",
+            "f": "SILO ID 106 Consumption",
             "g": "SILO ID 107 Consumption",
-            "h": "SILO 108 Consumption",
+            "h": "SILO ID 108 Consumption",
             "i": "SILO ID 109 Consumption",
             "j": "SILO ID 110 Consumption",
             "k": "SILO ID 111 Consumption",
@@ -323,7 +328,13 @@ class PLCSyncService:
                     f"{batch.actual_weight_quantity_finished_goods} → {new_quantity}"
                 )
 
-        # Update status fields
+        # Update status fields (but only if DB is not yet marked complete)
+        # LOGIC:
+        # 1. Check current DB status BEFORE any update
+        # 2. If DB status_manufacturing = true → SKIP ALL updates
+        # 3. If DB status_manufacturing = false → ALLOW updates including status itself
+        # 4. Next cycle: DB is true → blocks automatically
+        
         new_status_mfg = status_obj.get("manufacturing")
         if new_status_mfg is None:
             # Backward compatibility with previous key naming

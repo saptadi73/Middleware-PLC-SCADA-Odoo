@@ -198,7 +198,13 @@ def move_finished_batches_to_history(db: Session) -> int:
     for batch in finished_batches:
         history = TableSmoHistory()
         for column_name in history_columns:
-            setattr(history, column_name, getattr(batch, column_name))
+            if hasattr(batch, column_name):
+                setattr(history, column_name, getattr(batch, column_name))
+
+        # Ensure actual weight from PLC is copied to history
+        history.actual_weight_quantity_finished_goods = (
+            batch.actual_weight_quantity_finished_goods
+        )
 
         db.add(history)
         db.delete(batch)

@@ -81,4 +81,9 @@ class TableSmoBatch(Base):
 
     # Timestamp of last PLC read
     last_read_from_plc = Column(DateTime(timezone=True), nullable=True)
+    
+    # Flag: Consumption updated to Odoo successfully
+    # Set to True only after successful Odoo update
+    # Only batches with update_odoo=True can be moved to histories
+    update_odoo = Column(Boolean, nullable=False, server_default="false")
 

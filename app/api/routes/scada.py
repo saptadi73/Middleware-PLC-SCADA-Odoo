@@ -11,6 +11,11 @@ from app.services.odoo_auth_service import fetch_mo_list_detailed
 from app.services.odoo_consumption_service import (
     get_consumption_service,
 )
+from app.services.equipment_failure_service import get_equipment_failure_service
+from app.schemas.equipment_failure import (
+    FailureReportRequest,
+    FailureReportResponse,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -314,4 +319,81 @@ async def process_batch_consumption(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to process batch consumption: {str(exc)}",
+        ) from exc
+
+
+@router.post("/api/scada/equipment-failure")
+async def create_equipment_failure(
+    request: FailureReportRequest,
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Create equipment failure report.
+    
+    Available only when module `grt_scada_failure_report` is installed in Odoo.
+    
+    Request body:
+    ```json
+    {
+        "equipment_code": "PLC01",
+        "description": "Motor overload saat proses mixing",
+        "date": "2026-02-15 08:30:00"
+    }
+    ```
+    
+    Response (Success):
+    ```json
+    {
+        "status": "success",
+        "message": "Equipment failure report created",
+        "data": {
+            "id": 1,
+            "equipment_id": 1,
+            "equipment_code": "PLC01",
+            "equipment_name": "Main PLC - Injection Machine 01",
+            "description": "Motor overload saat proses mixing",
+            "date": "2026-02-15T08:30:00"
+        }
+    }
+    ```
+    
+    Response (Error):
+    ```json
+    {
+        "status": "error",
+        "message": "Equipment with code \"PLC01\" not found"
+    }
+    ```
+    """
+    try:
+        service = get_equipment_failure_service(db=db)
+        
+        result = await service.create_failure_report(
+            equipment_code=request.equipment_code,
+            description=request.description,
+            date=request.date,
+        )
+        
+        if result.get("success"):
+            return {
+                "status": "success",
+                "message": result.get("message", "Equipment failure report created"),
+                "data": result.get("data"),
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("message", "Failed to create failure report"),
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Error creating failure report: %s",
+            str(exc),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create failure report: {str(exc)}",
         ) from exc

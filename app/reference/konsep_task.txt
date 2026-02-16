@@ -1,0 +1,85 @@
+Konsep task adalah sebagai berikut :
+
+TASK 1: ✓ IMPLEMENTED WITH PLC WRITE
+Get list MO from Odoo untuk mendapatkan data MO yang sudah confirm, kemudian update ke table mo_batch. Proses ini akan dilakukan secara periodik, misalnya setiap 5 menit sekali, untuk memastikan data MO yang masuk ke PLC selalu up-to-date.
+
+Alur:
+1. Cek di table mo_batch apakah kosong
+   - Jika kosong: lanjut ke step 2
+   - Jika tidak kosong: SKIP (tunggu batch saat ini selesai di PLC)
+
+2. Get list MO dari Odoo (status=CONFIRMED/OPEN)
+
+3. Update mo_batch table dengan data MO baru
+   - Syarat: table mo_batch kosong
+   - Insert: mo_id, equipment, finished_goods, consumption targets, dll
+
+4. WRITE ke PLC Memory ✓ [IMPLEMENTED 2025-02-15]
+   - Menggunakan FINS Protocol (UDP)
+   - Setiap batch di-assign ke slot (1-30) di PLC memory
+   - PLC akan membaca batch data dan execute sesuai HMI/program
+   - Data lengkap: MO ID, equipment, silos (A-M), consumption, dll
+
+Interval: 5 menit (atau ketika queue kosong)
+
+
+TASK 2: ✓ IMPLEMENTED (Read PLC + Update DB + Sync Odoo)
+Proses baca PLC memory area READ secara periodik, misalnya setiap 5 menit sekali (configurable), untuk mendapatkan data status_manufacturing dan actual dari setiap batch yang sedang diproses di PLC.
+
+Alur:
+1. FIFO dieksekusi oleh PLC. PLC menentukan batch mana yang sedang diproses dan mengisi hasilnya di memory.
+
+2. Read PLC memory untuk batch yang sedang diproses PLC
+   - Mendapat: actual consumption per silo, actual weight, status flags
+
+3. Cek apakah ada perubahan data dari (last update) di mo_batch
+   - Syarat update: data consumption berubah DAN status_manufacturing != 1
+   - Jika tidak ada perubahan: skip update
+
+4. PLC berulang terus update memory dengan actual values sesuai mo_id yang sedang diproses
+
+5. Ketika PLC selesai (status_manufacturing=1):
+   - TASK 2 melakukan update akhiri kali ke mo_batch
+   - Set status_manufacturing=1 di table mo_batch
+
+6. Pada cycle berikutnya:
+   - TASK 2 tidak lagi update batch dengan status_manufacturing=1
+   - Fokus ke batch berikutnya (jika ada dalam queue)
+
+Interval: 5 menit (configurable dari .env)
+
+
+TASK 3: ✓ IMPLEMENTED (Archive & Sync Odoo)
+Membaca table MO-Batch secara periodik untuk mendapatkan data yang sudah selesai (status_manufacturing=1 dan update_odoo=FALSE).
+
+Alur:
+1. Query mo_batch WHERE status_manufacturing=1 AND update_odoo=0/False
+
+2. Untuk setiap batch selesai:
+   - POST consumption data ke Odoo API
+   - Endpoint: /api/scada/mo/update-with-consumptions
+   - Data includes: mo_id, actual consumption, actual weight, equipment_id
+
+3. Jika Odoo sync sukses:
+   - Update mo_batch SET update_odoo=1 / TRUE (menandakan sukses sync ke Odoo)
+   - Move batch ke table mo_histories (archive)
+   - DELETE batch dari table mo_batch (clear queue)
+
+4. Jika Odoo sync gagal:
+   - DO NOT DELETE batch
+   - Batch tetap di mo_batch dan akan di-retry Task 3 lagi
+   - Safety: Jangan hapus sampai Odoo confirm terima
+
+Interval: 3 menit (lebih sering dari Task 1, untuk queue clearance)
+
+
+TASK 4 (LEGACY - Now integrated to Task 3):
+Dulunya digunakan untuk move mo_batch → mo_histories.
+Sekarang sudah integrated ke TASK 3 (move + delete dilakukan atomic saat Odoo sync sukses).
+
+Jika masih ada orphan records (update_odoo=1 tapi belum di-archive):
+- Membaca table mo_batch WHERE update_odoo=1
+- Pindah ke mo_histories
+- Delete dari mo_batch
+
+(Opsional jika perlu cleanup manual)

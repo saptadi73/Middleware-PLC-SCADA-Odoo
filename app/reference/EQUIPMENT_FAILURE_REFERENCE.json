@@ -1,0 +1,149 @@
+{
+    "meta": {
+        "name": "Equipment Failure Reference",
+        "description": "Reference data untuk pembacaan Equipment Failure dari PLC SCADA",
+        "source_file": "mapping_data_PLC_kan_jabung_FINAL.xlsx",
+        "sheet": "equipment_failure_data",
+        "total_points": 9,
+        "created_date": "2026-02-15",
+        "version": "1.0"
+    },
+    "raw_list": [
+        {
+            "No": 1,
+            "Informasi": "equipment_code",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "silo101",
+            "DM - Memory": "D7710-7717"
+        },
+        {
+            "No": 2,
+            "Informasi": "INFO",
+            "Data Type": "ASCII",
+            "length": 16,
+            "Sample": "START_FAILURE",
+            "DM - Memory": "D7718-7725"
+        },
+        {
+            "No": 3,
+            "Informasi": "Year",
+            "Data Type": "BCD",
+            "length": 4,
+            "Sample": 2026,
+            "DM - Memory": "D7726"
+        },
+        {
+            "No": 4,
+            "Informasi": "Month",
+            "Data Type": "BCD",
+            "length": 2,
+            "Sample": 2,
+            "DM - Memory": "D7727"
+        },
+        {
+            "No": 5,
+            "Informasi": "Day",
+            "Data Type": "BCD",
+            "length": 2,
+            "Sample": 23,
+            "DM - Memory": "D7728"
+        },
+        {
+            "No": 6,
+            "Informasi": "Hour",
+            "Data Type": "BCD",
+            "length": 2,
+            "Sample": 20,
+            "DM - Memory": "D7730"
+        },
+        {
+            "No": 7,
+            "Informasi": "Minute",
+            "Data Type": "BCD",
+            "length": 2,
+            "Sample": 22,
+            "DM - Memory": "D7731"
+        },
+        {
+            "No": 8,
+            "Informasi": "Second",
+            "Data Type": "BCD",
+            "length": 2,
+            "Sample": 35,
+            "DM - Memory": "D7732"
+        }
+    ],
+    "mapping_structure": {
+        "equipment_code": {
+            "field_name": "equipment_code",
+            "data_type": "REAL",
+            "plc_address": "D7710-D7717",
+            "description": "Kode atau ID peralatan yang mengalami kegagalan",
+            "sample_values": ["silo101", "silo102", "motor_pump_01"]
+        },
+        "failure_info": {
+            "field_name": "failure_info",
+            "data_type": "ASCII",
+            "plc_address": "D7718-D7725",
+            "description": "Informasi detail tentang jenis kegagalan",
+            "sample_values": ["START_FAILURE", "SENSOR_ERROR", "MOTOR_FAILURE"]
+        },
+        "failure_timestamp": {
+            "field_name": "failure_timestamp",
+            "composed_of": ["Year", "Month", "Day", "Hour", "Minute", "Second"],
+            "description": "Waktu terjadinya kegagalan peralatan",
+            "format": "YYYY-MM-DD HH:MM:SS",
+            "year": {
+                "data_type": "BCD",
+                "plc_address": "D7726"
+            },
+            "month": {
+                "data_type": "BCD",
+                "plc_address": "D7727"
+            },
+            "day": {
+                "data_type": "BCD",
+                "plc_address": "D7728"
+            },
+            "hour": {
+                "data_type": "BCD",
+                "plc_address": "D7730"
+            },
+            "minute": {
+                "data_type": "BCD",
+                "plc_address": "D7731"
+            },
+            "second": {
+                "data_type": "BCD",
+                "plc_address": "D7732"
+            }
+        }
+    },
+    "data_types_info": {
+        "REAL": {
+            "description": "Real number with decimal support",
+            "bytes": 2,
+            "example": "silo101"
+        },
+        "ASCII": {
+            "description": "Text/String data",
+            "bytes_per_character": 1,
+            "max_length": 16,
+            "example": "START_FAILURE"
+        },
+        "BCD": {
+            "description": "Binary Coded Decimal format",
+            "bytes": 1,
+            "range": "0-99 (for time fields)",
+            "example": 23
+        }
+    },
+    "notes": [
+        "Equipment Failure Reference digunakan untuk tracking kegagalan peralatan dalam sistem SCADA",
+        "Timestamp disimpan dalam format BCD terpisah-pisah untuk kompatibilitas dengan PLC",
+        "Field equipment_code dapat disesuaikan dengan kode peralatan yang ada di sistem",
+        "Failure info berisi keterangan singkat tentang jenis kegagalan yang terjadi",
+        "Semua BCD fields harus dikombinasikan untuk membentuk timestamp lengkap"
+    ]
+}

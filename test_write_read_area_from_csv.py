@@ -68,6 +68,7 @@ class ReadAreaCsvWriter:
         data_type: str,
         length: Optional[int],
         scale: Optional[float],
+        word_count: Optional[int],
     ) -> List[int]:
         data_type = data_type.upper()
 
@@ -81,6 +82,14 @@ class ReadAreaCsvWriter:
             scale_value = scale if scale else 1.0
             scaled_value = int(float(value) * scale_value)
 
+            # If mapping uses 2 words, always write 32-bit value
+            if word_count and word_count >= 2:
+                unsigned_value = scaled_value & 0xFFFFFFFF
+                upper = (unsigned_value >> 16) & 0xFFFF
+                lower = unsigned_value & 0xFFFF
+                return [upper, lower]
+
+            # 1-word fallback
             if scaled_value < 0:
                 scaled_value = 65536 + scaled_value
             elif scaled_value > 65535:
@@ -152,7 +161,9 @@ class ReadAreaCsvWriter:
                 length_value = int(length) if length else None
                 scale_value = float(scale) if scale else None
                 address, word_count = self._parse_dm_address(dm_address)
-                words = self._convert_to_words(value, data_type, length_value, scale_value)
+                words = self._convert_to_words(
+                    value, data_type, length_value, scale_value, word_count
+                )
 
                 if len(words) != word_count:
                     if len(words) < word_count:
