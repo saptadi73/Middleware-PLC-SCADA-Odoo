@@ -24,6 +24,24 @@ PLC Memory (FINS Protocol)
 
 ## Test Scripts
 
+### 0. **test_write_read_area_from_odoo.py** (READ Area Feeder)
+
+**Purpose**: Feed PLC READ area dari Odoo MO list untuk persiapan test read/sync.
+
+**Run**:
+```bash
+python test_write_read_area_from_odoo.py --loop --limit 10 --interval-seconds 10 --write-retries 3
+```
+
+**Behavior**:
+- Status di READ area selalu dipaksa:
+  - `status_manufacturing = 1`
+  - `status_operation = 0`
+
+Use this before `test_plc_read_quick.py` or `test_plc_read_update_odoo.py` when you want automatic test data refresh from Odoo.
+
+---
+
 ### 1. **test_plc_read_quick.py** (Quick Verification)
 
 **Purpose**: Quick PLC read test untuk verify connection dan consumption data mapping.

@@ -86,4 +86,9 @@ class TableSmoBatch(Base):
     # Set to True only after successful Odoo update
     # Only batches with update_odoo=True can be moved to histories
     update_odoo = Column(Boolean, nullable=False, server_default="false")
+    
+    # Flag: MO was cancelled in Odoo (for idempotent retry)
+    # Set to True after successful Odoo cancel
+    # Used to skip Odoo cancel on retry, only attempt archive
+    odoo_cancelled = Column(Boolean, nullable=False, server_default="false")
 

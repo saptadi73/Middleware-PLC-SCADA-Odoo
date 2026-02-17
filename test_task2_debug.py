@@ -84,7 +84,7 @@ def read_plc_data():
     
     try:
         plc_service = get_plc_sync_service()
-        result = plc_service.sync_from_plc()
+        result = asyncio.run(plc_service.sync_from_plc())
         
         print(f"PLC sync result:")
         print(f"  - success: {result.get('success')}")

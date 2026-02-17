@@ -319,7 +319,7 @@ async def sync_data_from_plc() -> Any:
     """
     try:
         service = get_plc_sync_service()
-        result = service.sync_from_plc()
+        result = await service.sync_from_plc()
         
         if result["success"]:
             return {

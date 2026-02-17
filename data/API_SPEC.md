@@ -345,11 +345,12 @@ Auth: Session cookie
 
 **Parameters (JSON-RPC `params`)**:
 - `equipment_id` (required): Equipment code
-- `status` (optional): Filter by status ('planned', 'progress', 'done')
+- `status` (optional): Filter by status (`draft`, `confirmed`, `planned`, `progress`, `to_close`, `done`)
 - `limit` (optional): Max records (default: 50)
 - `offset` (optional): Pagination offset (default: 0)
 
 Note: List is based on `mrp.production` with `scada_equipment_id` matching the equipment code.
+Note: MO with status `cancel` is always excluded from this endpoint.
 
 **Response**:
 
@@ -821,7 +822,7 @@ Auth: Session cookie
 - `equipment` field contains full SCADA equipment details with all 14 fields
 - Equipment fields include: id, code, name, equipment_type, manufacturer, model_number, serial_number, ip_address, port, protocol, is_active, connection_status, sync_status, last_connected
 - `produced_qty` = finished goods completed, `consumed_qty` = raw material consumed
-- Returns MOs in any status unless filtered
+- Returns MOs in any status except `cancel` unless filtered by `status`
 
 **Example**:
 ```bash
@@ -1113,17 +1114,25 @@ Content-Type: application/json
 
 **Field Descriptions**:
 - `mo_id` (required): Manufacturing Order name/number (e.g., "WH/MO/00001")
-- `quantity` (optional): Update jumlah product quantity yang akan diproduksi
+- `quantity` (optional): Update target quantity MO
+- Alias quantity yang juga didukung: `product_qty`, `quantity_to_produce`, `qty_to_produce`, `target_produksi`, `target_production`, `qty_producing`
 - `{equipment_code}` (optional): Equipment code SCADA (e.g., "silo101", "silo102") dengan nilai consumption quantity
 
 **How it works**:
 1. System akan mencari Manufacturing Order berdasarkan `mo_id`
-2. Jika `quantity` diberikan, akan update `product_qty` MO tersebut
-3. Untuk setiap equipment code yang dikirim (kecuali mo_id dan quantity):
+2. Jika quantity (atau alias quantity) diberikan, system akan:
+   - re-scale MO menggunakan wizard standar Odoo `change.production.qty`
+   - update `product_qty` dan raw/finished moves agar konsisten
+   - sinkronkan `qty_producing` ke target terbaru
+3. Untuk setiap equipment code yang dikirim (kecuali `mo_id` dan key quantity):
    - System mencari equipment berdasarkan code (e.g., "silo101")
    - Mencari raw material moves yang berelasi dengan equipment tersebut
    - Apply consumption quantity ke moves tersebut
    - Log consumption ke scada.equipment.material
+
+**Validation Rules**:
+- Endpoint hanya bisa update MO yang belum `done/cancel`.
+- Jika MO sudah `done` atau `cancel`, request akan ditolak.
 
 **Response**:
 
@@ -1218,7 +1227,7 @@ Endpoint ini ideal untuk sistem SCADA yang sudah mengetahui equipment code untuk
 
 Frontend hanya perlu mengirim:
 - MO name
-- Quantity produksi (optional)
+- Target quantity MO (optional, akan re-scale `product_qty` + raw/finished moves)
 - Mapping equipment_code → consumption_quantity
 
 System akan otomatis:
@@ -1233,7 +1242,68 @@ System akan otomatis:
 
 ---
 
-### 19. Get Equipment Status (Protected)
+### 19. Cancel Manufacturing Order (Protected)
+
+**Cancel Manufacturing Order by `mo_id`**
+
+```http
+POST /api/scada/mo/cancel
+Auth: Session cookie
+Content-Type: application/json
+```
+
+**Request Body**:
+
+```json
+{
+  "mo_id": "WH/MO/00003"
+}
+```
+
+**Response (Success)**:
+
+```json
+{
+  "status": "success",
+  "message": "Manufacturing order cancelled successfully",
+  "mo_id": "WH/MO/00003",
+  "mo_state": "cancel"
+}
+```
+
+**Response (Already Cancelled)**:
+
+```json
+{
+  "status": "success",
+  "message": "Manufacturing order already cancelled",
+  "mo_id": "WH/MO/00003",
+  "mo_state": "cancel"
+}
+```
+
+**Response (Error)**:
+
+```json
+{
+  "status": "error",
+  "message": "Cannot cancel MO \"WH/MO/00003\" in state \"done\""
+}
+```
+
+**cURL Example**:
+```bash
+curl -X POST http://localhost:8069/api/scada/mo/cancel \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "mo_id": "WH/MO/00003"
+  }'
+```
+
+---
+
+### 20. Get Equipment Status (Protected)
 
 **Retrieve Equipment Connection & Status**
 
@@ -1269,7 +1339,390 @@ curl -X GET http://localhost:8069/api/scada/equipment/PLC01 \
 
 ---
 
-### 20. Get Product List (Protected)
+### 19C. Get OEE Detail (Protected)
+
+**Get OEE detail data for frontend (summary + breakdown per silo/perangkat)**
+
+```http
+POST /api/scada/oee-detail
+Auth: Session cookie
+Content-Type: application/json
+```
+
+**Request Body (JSON-RPC params)**:
+
+```json
+{
+  "oee_id": 10,
+  "mo_id": "WH/MO/00001",
+  "equipment_code": "silo101",
+  "date_from": "2026-02-01",
+  "date_to": "2026-02-29",
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "count": 1,
+  "data": [
+    {
+      "oee_id": 10,
+      "date_done": "2026-02-16T09:40:00",
+      "mo_id": "WH/MO/00001",
+      "mo_record_id": 351,
+      "equipment": {
+        "id": 4,
+        "code": "PLC01",
+        "name": "Main PLC - Injection Machine 01"
+      },
+      "product_id": 112,
+      "product_name": "JF Plus",
+      "qty_planned": 2500.0,
+      "qty_finished": 2495.0,
+      "variance_finished": -5.0,
+      "yield_percent": 99.8,
+      "qty_bom_consumption": 2500.0,
+      "qty_actual_consumption": 2496.4,
+      "variance_consumption": -3.6,
+      "consumption_ratio": 99.856,
+      "lines": [
+        {
+          "equipment_id": 11,
+          "equipment_code": "silo101",
+          "equipment_name": "SILO A",
+          "to_consume": 825.0,
+          "actual_consumed": 825.25,
+          "variance": 0.25,
+          "consumption_ratio": 100.03,
+          "material_count": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### 19D. Get OEE Average by Equipment List (Protected)
+
+**Get average OEE report by SCADA equipment list**
+
+```http
+POST /api/scada/oee-equipment-avg
+Auth: Session cookie
+Content-Type: application/json
+```
+
+**Request Body (JSON-RPC params)**:
+
+```json
+{
+  "equipment_code": "silo101",
+  "equipment_type": "silo",
+  "is_active": true,
+  "date_from": "2026-02-01",
+  "date_to": "2026-02-29",
+  "limit": 100,
+  "offset": 0
+}
+```
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "count": 2,
+  "data": [
+    {
+      "equipment": {
+        "id": 11,
+        "code": "silo101",
+        "name": "SILO A",
+        "equipment_type": "silo",
+        "is_active": true
+      },
+      "oee_records_count": 12,
+      "avg_summary": {
+        "qty_planned": 2500.0,
+        "qty_finished": 2492.1,
+        "variance_finished": -7.9,
+        "yield_percent": 99.68,
+        "qty_bom_consumption": 2500.0,
+        "qty_actual_consumption": 2497.4,
+        "variance_consumption": -2.6,
+        "consumption_ratio": 99.90
+      },
+      "avg_consumption_detail": {
+        "to_consume": 825.0,
+        "actual_consumed": 825.2,
+        "variance": 0.2,
+        "consumption_ratio": 100.02,
+        "material_count": 1.0
+      },
+      "last_oee_date": "2026-02-16 09:40:00"
+    }
+  ]
+}
+```
+
+---
+
+### 19A. Create Equipment Failure Report (Protected)
+
+**Create failure report for SCADA equipment**
+
+```http
+POST /api/scada/equipment-failure
+Auth: Session cookie
+Content-Type: application/json
+```
+
+**Request Body (REST format)**:
+
+```json
+{
+  "equipment_code": "PLC01",
+  "description": "Motor overload saat proses mixing",
+  "date": "2026-02-15 08:30:00"
+}
+```
+
+**JSON-RPC Body**:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "call",
+  "params": {
+    "equipment_code": "PLC01",
+    "description": "Motor overload saat proses mixing",
+    "date": "2026-02-15 08:30:00"
+  }
+}
+```
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "message": "Equipment failure report created",
+  "data": {
+    "id": 1,
+    "equipment_id": 1,
+    "equipment_code": "PLC01",
+    "equipment_name": "Main PLC - Injection Machine 01",
+    "description": "Motor overload saat proses mixing",
+    "date": "2026-02-15T08:30:00"
+  }
+}
+```
+
+**cURL Example (REST)**:
+```bash
+curl -X POST http://localhost:8069/api/scada/equipment-failure \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "equipment_code": "PLC01",
+    "description": "Motor overload saat proses mixing",
+    "date": "2026-02-15 08:30:00"
+  }'
+```
+
+**cURL Example (JSON-RPC)**:
+```bash
+curl -X POST http://localhost:8069/api/scada/equipment-failure \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "call",
+    "params": {
+      "equipment_code": "PLC01",
+      "description": "Motor overload saat proses mixing",
+      "date": "2026-02-15 08:30:00"
+    }
+  }'
+```
+
+### 19B. Get Equipment Failure Reports (Protected)
+
+**Get list of equipment failure reports**
+
+```http
+GET /api/scada/equipment-failure?equipment_code=PLC01&limit=50&offset=0
+Auth: Session cookie
+```
+
+Note: Endpoint ini menggunakan method `GET`.
+Untuk report frontend berbasis JSON-RPC gunakan endpoint baru `POST /api/scada/equipment-failure-report` (lihat section 19E).
+
+**Query Parameters**:
+- `equipment_code` (optional): filter by SCADA equipment code
+- `limit` (optional): max records (default 50)
+- `offset` (optional): pagination offset (default 0)
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "count": 1,
+  "data": [
+    {
+      "id": 1,
+      "equipment_id": 1,
+      "equipment_code": "PLC01",
+      "equipment_name": "Main PLC - Injection Machine 01",
+      "description": "Motor overload saat proses mixing",
+      "date": "2026-02-15T08:30:00",
+      "reported_by": "Administrator"
+    }
+  ]
+}
+```
+
+**cURL Example (REST)**:
+```bash
+curl -X GET "http://localhost:8069/api/scada/equipment-failure?equipment_code=PLC01&limit=50" \
+  -b cookies.txt
+```
+
+**cURL Example (JSON-RPC)**:
+```bash
+curl -X POST http://localhost:8069/api/scada/equipment-failure-report \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "call",
+    "params": {
+      "equipment_code": "PLC01",
+      "limit": 50,
+      "offset": 0
+    }
+  }'
+```
+
+---
+
+### 19E. Get Equipment Failure Report (Frontend, Protected)
+
+**Get frontend-ready equipment failure report (detail + summary)**
+
+```http
+POST /api/scada/equipment-failure-report
+Auth: Session cookie
+Content-Type: application/json
+```
+
+**Request Body (JSON-RPC params)**:
+
+```json
+{
+  "equipment_code": "PLC01",
+  "period": "this_month",
+  "date_from": "2026-02-01",
+  "date_to": "2026-02-29",
+  "limit": 100,
+  "offset": 0
+}
+```
+
+**Field Descriptions**:
+- `equipment_code` (optional): filter by equipment code
+- `period` (optional): preset periode waktu. Nilai yang didukung:
+  - `today`
+  - `yesterday`
+  - `this_week`
+  - `last_7_days`
+  - `this_month`
+  - `last_month`
+  - `this_year`
+- `date_from` (optional): tanggal awal (`YYYY-MM-DD` atau `YYYY-MM-DD HH:MM:SS`)
+- `date_to` (optional): tanggal akhir (`YYYY-MM-DD` atau `YYYY-MM-DD HH:MM:SS`)
+- `limit` (optional): default `100`
+- `offset` (optional): default `0`
+
+Catatan:
+- Jika `period` dikirim, sistem akan otomatis set rentang tanggal berdasarkan periode tersebut.
+- Jika `date_from`/`date_to` juga dikirim, nilai tanggal manual akan diprioritaskan.
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "count": 2,
+  "data": [
+    {
+      "id": 10,
+      "equipment_id": 1,
+      "equipment_code": "PLC01",
+      "equipment_name": "Main PLC - Injection Machine 01",
+      "description": "Motor overload",
+      "date": "2026-02-15T08:30:00",
+      "reported_by": "Administrator"
+    },
+    {
+      "id": 9,
+      "equipment_id": 1,
+      "equipment_code": "PLC01",
+      "equipment_name": "Main PLC - Injection Machine 01",
+      "description": "Trip breaker",
+      "date": "2026-02-12T11:12:00",
+      "reported_by": "Administrator"
+    }
+  ],
+  "summary": {
+    "total_failures": 7,
+    "equipment_count": 2,
+    "by_equipment": [
+      {
+        "equipment_id": 1,
+        "equipment_name": "Main PLC - Injection Machine 01",
+        "failure_count": 5,
+        "last_failure_date": "2026-02-15 08:30:00"
+      },
+      {
+        "equipment_id": 7,
+        "equipment_name": "SILO A",
+        "failure_count": 2,
+        "last_failure_date": "2026-02-10 13:20:00"
+      }
+    ]
+  }
+}
+```
+
+**cURL Example (JSON-RPC)**:
+```bash
+curl -X POST http://localhost:8069/api/scada/equipment-failure-report \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "call",
+    "params": {
+      "equipment_code": "PLC01",
+      "period": "this_month",
+      "limit": 100,
+      "offset": 0
+    }
+  }'
+```
+
+---
+
+### 21. Get Product List (Protected)
 
 **Retrieve Product List**
 
@@ -1354,7 +1807,7 @@ curl -X POST http://localhost:8069/api/scada/products \
 
 ---
 
-### 21. Get Product List by Category (Protected)
+### 22. Get Product List by Category (Protected)
 
 **Retrieve Product List with Category Filter (JSON-RPC)**
 
@@ -1403,7 +1856,7 @@ curl -X POST http://localhost:8069/api/scada/products-by-category \
 
 ---
 
-### 22. Get BoM List (Protected)
+### 23. Get BoM List (Protected)
 
 **Retrieve BoM list with components**
 
@@ -1485,14 +1938,14 @@ curl -X POST http://localhost:8069/api/scada/boms \
 
 ---
 
-### 23. Create Failure Report (Extension Module, Protected)
+### 24. Create Failure Report (Extension Module, Protected)
 
 **Create SCADA equipment failure report**
 
 Available only when module `grt_scada_failure_report` is installed.
 
 ```http
-POST /api/scada/equipment-failure
+POST /api/scada/failure-report
 Auth: Session cookie
 Content-Type: application/json
 ```
@@ -1517,14 +1970,12 @@ Content-Type: application/json
 ```json
 {
   "status": "success",
-  "message": "Equipment failure report created",
+  "message": "Failure report created",
   "data": {
     "id": 1,
-    "equipment_id": 1,
     "equipment_code": "PLC01",
-    "equipment_name": "Main PLC - Injection Machine 01",
     "description": "Motor overload saat proses mixing",
-    "date": "2026-02-15T08:30:00"
+    "date": "2026-02-15 08:30:00"
   }
 }
 ```
@@ -1540,7 +1991,7 @@ Content-Type: application/json
 
 **cURL Example**:
 ```bash
-curl -X POST http://localhost:8069/api/scada/equipment-failure \
+curl -X POST http://localhost:8069/api/scada/failure-report \
   -H "Content-Type: application/json" \
   -b cookies.txt \
   -d '{

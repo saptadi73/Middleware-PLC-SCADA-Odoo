@@ -171,7 +171,7 @@ async def plc_read_sync_task():
         
         try:
             logger.debug("[TASK 2-DEBUG-5] Calling sync_from_plc()...")
-            result = plc_service.sync_from_plc()
+            result = await plc_service.sync_from_plc()
             
             logger.debug(f"[TASK 2-DEBUG-6] PLC sync result: {result}")
             

@@ -93,7 +93,7 @@ async def main() -> None:
 
     _print_header("STEP 4 - Sync PLC data to mo_batch")
     plc_sync_service = get_plc_sync_service()
-    sync_result = plc_sync_service.sync_from_plc()
+    sync_result = asyncio.run(plc_sync_service.sync_from_plc())
     print(f"PLC sync result: {sync_result}")
 
     with SessionLocal() as db:

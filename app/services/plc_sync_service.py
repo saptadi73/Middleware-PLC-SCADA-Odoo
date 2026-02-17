@@ -18,6 +18,7 @@ from app.services.plc_read_service import get_plc_read_service
 from app.services.odoo_consumption_service import (
     get_consumption_service,
 )
+from app.services.mo_history_service import get_mo_history_service
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class PLCSyncService:
         self.plc_read_service = get_plc_read_service()
         self.consumption_service = get_consumption_service()
 
-    def sync_from_plc(self) -> Dict[str, Any]:
+    async def sync_from_plc(self) -> Dict[str, Any]:
         """
         Read data from PLC and update mo_batch if values changed.
 
@@ -68,7 +69,7 @@ class PLCSyncService:
                     }
 
                 # Check if data has changed and update
-                updated = self._update_batch_if_changed(
+                updated = await self._update_batch_if_changed(
                     session, batch, plc_data
                 )
 
@@ -169,7 +170,7 @@ class PLCSyncService:
                 "error": str(e),
             }
 
-    def sync_from_plc_with_consumption(self) -> Dict[str, Any]:
+    async def sync_from_plc_with_consumption(self) -> Dict[str, Any]:
         """
         Read from PLC, update batch, dan sync consumption ke Odoo.
 
@@ -210,7 +211,7 @@ class PLCSyncService:
                     }
 
                 # Update batch dari PLC data
-                updated = self._update_batch_if_changed(
+                updated = await self._update_batch_if_changed(
                     session, batch, plc_data
                 )
 
@@ -221,9 +222,7 @@ class PLCSyncService:
                 # Step 3: Sync consumption ke Odoo
                 # Menggunakan asyncio.run karena function ini sync tapi
                 # consumption service adalah async
-                consumption_result = asyncio.run(
-                    self.sync_consumption_to_odoo(batch)
-                )
+                consumption_result = await self.sync_consumption_to_odoo(batch)
 
                 return {
                     "success": True,
@@ -243,7 +242,7 @@ class PLCSyncService:
                 "mo_id": mo_id,
             }
 
-    def _update_batch_if_changed(
+    async def _update_batch_if_changed(
         self, session: Session, batch: TableSmoBatch, plc_data: Dict[str, Any]
     ) -> bool:
         """
@@ -358,11 +357,151 @@ class PLCSyncService:
         if new_status_op is not None:
             status_bool = bool(new_status_op)
             current_status_op: bool = batch.status_operation  # type: ignore
+            logger.debug(
+                "Status operation check: plc=%s db=%s mo_id=%s batch_no=%s",
+                status_bool,
+                current_status_op,
+                batch.mo_id,
+                batch.batch_no,
+            )
+            
+            # AUTO-CANCEL LOGIC: Detect status_operation=1 (failed state)
+            # Support idempotent retry with odoo_cancelled flag
+            # Triggers when:
+            # 1. status_operation=True (failed) AND status_manufacturing=False (not completed)
+            # This covers both: new failures and retry scenarios for archive
+            odoo_cancelled_flag: bool = getattr(batch, 'odoo_cancelled', False)  # type: ignore
+            status_manufacturing: bool = getattr(batch, 'status_manufacturing', False)  # type: ignore
+            
+            if status_bool and not status_manufacturing:
+                # Failed batch detected (not completed normally)
+                mo_id_val = batch.mo_id
+                mo_id = str(mo_id_val) if mo_id_val is not None else "Unknown"
+                batch_no: int = batch.batch_no  # type: ignore
+                
+                logger.warning(
+                    f"⚠️ BATCH FAILURE DETECTED: status_operation=1 for "
+                    f"batch #{batch_no} (MO: {mo_id}). Initiating auto-cancel "
+                    f"(odoo_cancelled={odoo_cancelled_flag})..."
+                )
+                
+                try:
+                    # Step 1: Cancel MO in Odoo (skip if already cancelled)
+                    if not odoo_cancelled_flag:
+                        logger.debug(
+                            f"🔍 DEBUG: About to call cancel_mo for mo_id={mo_id}, batch_no={batch_no}"
+                        )
+                        cancel_result = await self.consumption_service.cancel_mo(mo_id)
+                        logger.debug(
+                            f"🔍 DEBUG: Raw cancel_result type={type(cancel_result)}, value={cancel_result}"
+                        )
+                        logger.debug(
+                            "Auto-cancel Odoo result: %s for mo_id=%s batch_no=%s",
+                            cancel_result,
+                            mo_id,
+                            batch_no,
+                        )
+                        
+                        # Debug: Check what keys are in cancel_result
+                        if isinstance(cancel_result, dict):
+                            logger.debug(
+                                f"🔍 DEBUG: cancel_result.keys() = {cancel_result.keys()}"
+                            )
+                            logger.debug(
+                                f"🔍 DEBUG: cancel_result.get('success') = {cancel_result.get('success')}"
+                            )
+                        
+                        if cancel_result.get("success"):
+                            logger.info(
+                                f"✓ Odoo cancellation successful for batch #{batch_no} (MO: {mo_id})"
+                            )
+                            # Set odoo_cancelled flag to prevent re-cancel on retry
+                            batch.odoo_cancelled = True  # type: ignore
+                            session.commit()
+                            logger.debug(
+                                f"🔍 DEBUG: Set odoo_cancelled=True for batch_no={batch_no}"
+                            )
+                        else:
+                            logger.warning(
+                                f"🔍 DEBUG: cancel_result.get('success') returned False/None, "
+                                f"skipping archive step for batch_no={batch_no}"
+                            )
+                            logger.error(
+                                f"✗ Failed to cancel MO {mo_id} in Odoo: "
+                                f"{cancel_result.get('error')}"
+                            )
+                            # Don't continue to archive if Odoo cancel failed
+                            # Continue to update status_operation to mark the failure
+                            batch.status_operation = status_bool  # type: ignore
+                            changed = True
+                            return changed
+                    else:
+                        logger.info(
+                            f"⏩ Odoo cancel already completed for batch #{batch_no} (MO: {mo_id}), "
+                            f"proceeding directly to archive retry..."
+                        )
+                    
+                    # Step 2: Archive to history with status='cancelled'
+                    # This step executes if:
+                    # - Odoo cancel just succeeded above, OR
+                    # - odoo_cancelled flag was already True (retry scenario)
+                    logger.debug(
+                        f"🔍 DEBUG: About to call cancel_batch on history_service for batch_no={batch_no}"
+                    )
+                    history_service = get_mo_history_service(session)
+                    logger.debug(
+                        f"🔍 DEBUG: history_service instance = {history_service}"
+                    )
+                    archive_result = history_service.cancel_batch(
+                        batch_no=batch_no,
+                        notes=f"Auto-cancelled: status_operation=1 (failed) detected from PLC"
+                    )
+                    logger.debug(
+                        f"🔍 DEBUG: Raw archive_result type={type(archive_result)}, value={archive_result}"
+                    )
+                    logger.debug(
+                        "Auto-cancel archive result: %s for mo_id=%s batch_no=%s",
+                        archive_result,
+                        mo_id,
+                        batch_no,
+                    )
+                    
+                    # Debug: Check what keys are in archive_result
+                    if isinstance(archive_result, dict):
+                        logger.debug(
+                            f"🔍 DEBUG: archive_result.keys() = {archive_result.keys()}"
+                        )
+                        logger.debug(
+                            f"🔍 DEBUG: archive_result.get('success') = {archive_result.get('success')}"
+                        )
+                    
+                    if archive_result.get("success"):
+                        logger.info(
+                            f"✓✓ Batch #{batch_no} (MO: {mo_id}) cancelled and archived to history"
+                        )
+                        # Return immediately - batch is now archived and deleted
+                        # No need to update status_operation field
+                        return False  # No changes to mo_batch (already deleted)
+                    else:
+                        logger.error(
+                            f"✗ Failed to archive cancelled batch #{batch_no}: "
+                            f"{archive_result.get('message')}. Will retry on next PLC read."
+                        )
+                        # Keep odoo_cancelled=True, will retry archive next iteration
+                
+                except Exception as cancel_error:
+                    logger.error(
+                        f"✗ Exception during auto-cancel for batch #{batch_no}: {cancel_error}",
+                        exc_info=True
+                    )
+                    # Continue to update status_operation to mark the failure
+            
+            # Update status_operation field (if batch still exists)
             if current_status_op != status_bool:
                 batch.status_operation = status_bool  # type: ignore
                 changed = True
                 logger.debug(
-                    f"Updated status_operation: " f"{current_status_op} → {status_bool}"
+                    f"Updated status_operation: {current_status_op} → {status_bool}"
                 )
 
         # Always update timestamp if any field changed

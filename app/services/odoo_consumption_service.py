@@ -863,6 +863,90 @@ class OdooConsumptionService:
                 "error": str(e),
             }
 
+    async def cancel_mo(self, mo_id: str) -> Dict[str, Any]:
+        """
+        Cancel Manufacturing Order di Odoo.
+        
+        Called when status_operation=1 (failed) detected from PLC.
+        
+        Args:
+            mo_id: Manufacturing order ID (e.g., "WH/MO/00003")
+        
+        Returns:
+            Dict with cancellation result:
+            {
+                "success": bool,
+                "message": str,
+                "mo_id": str,
+                "mo_state": str ("cancel" if successful)
+            }
+        """
+        client = None
+        try:
+            logger.info(f"Attempting to cancel MO {mo_id} in Odoo...")
+            
+            # Authenticate dengan Odoo
+            client = await self._authenticate()
+            if not client:
+                return {
+                    "success": False,
+                    "error": "Failed to authenticate with Odoo",
+                    "mo_id": mo_id,
+                }
+            
+            # Call Odoo cancel endpoint
+            cancel_url = f"{self.settings.odoo_url}/api/scada/mo/cancel"
+            payload = {"mo_id": mo_id}
+            
+            logger.debug(f"Sending cancel request to Odoo: {cancel_url}")
+            logger.debug(f"Payload: {payload}")
+            
+            response = await client.post(cancel_url, json=payload, timeout=30.0)
+            
+            self._log_odoo_response(cancel_url, response)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get("status") == "success":
+                    logger.info(
+                        f"✓ Successfully cancelled MO {mo_id} in Odoo. "
+                        f"State: {result.get('mo_state')}"
+                    )
+                    return {
+                        "success": True,
+                        "message": result.get("message", "MO cancelled successfully"),
+                        "mo_id": mo_id,
+                        "mo_state": result.get("mo_state", "cancel"),
+                    }
+                else:
+                    error_msg = result.get("message", "Unknown error from Odoo")
+                    logger.error(f"✗ Failed to cancel MO {mo_id}: {error_msg}")
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "mo_id": mo_id,
+                    }
+            else:
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                logger.error(f"✗ Odoo cancel request failed for MO {mo_id}: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "mo_id": mo_id,
+                }
+        
+        except Exception as e:
+            logger.error(f"Error cancelling MO {mo_id}: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "mo_id": mo_id,
+            }
+        finally:
+            if client:
+                await client.aclose()
+
     def get_silo_mapping(self) -> Dict[int, Dict[str, str]]:
         """Get current silo mapping"""
         return self._silo_mapping

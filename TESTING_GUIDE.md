@@ -269,6 +269,45 @@ python test_export_read_area_to_csv.py
 
 ---
 
+### 1d. test_write_read_area_from_odoo.py
+
+**Purpose**: Populate PLC READ area langsung dari list MO Odoo tanpa edit CSV manual.
+
+**What it does:**
+- Authenticate ke Odoo dan fetch `mo-list-detailed`
+- Map `mo_id`, `product_name`, `quantity`, dan `components_consumption` ke field READ area
+- Write ke PLC berdasarkan `READ_DATA_PLC_MAPPING.json`
+- Force status untuk semua data yang ditulis: `status_manufacturing=1` dan `status_operation=0`
+- Support retry per field write untuk mengurangi timeout transien PLC
+
+**Usage (single run):**
+
+```bash
+python test_write_read_area_from_odoo.py --limit 10 --interval-seconds 5
+```
+
+**Usage (continuous loop):**
+
+```bash
+python test_write_read_area_from_odoo.py --loop --limit 10 --interval-seconds 10 --write-retries 3
+```
+
+**Usage (specific MO):**
+
+```bash
+python test_write_read_area_from_odoo.py --single-mo-id "WH/MO/00007" --write-retries 3 --retry-delay-seconds 0.3
+```
+
+**Useful options:**
+- `--weight-finished-good <float>` untuk simulasi berat output
+- `--write-retries <int>` dan `--retry-delay-seconds <float>` untuk stabilkan write saat PLC timeout transien
+
+**Important:**
+- Opsi `--status-manufacturing` dan `--status-operation` sudah tidak tersedia.
+- Nilai status selalu dipaksa `1` (manufacturing done) dan `0` (operation normal).
+
+---
+
 ### 2. test_plc_read.py
 
 **Purpose**: Test reading data dari PLC via HTTP API.
@@ -520,6 +559,20 @@ python test_plc_write_from_odoo.py
 python test_plc_read.py
 
 # 5. Sync to database
+python test_plc_sync.py
+```
+
+#### **Option 4: Auto READ-Area Feed from Odoo (No CSV Manual Edit)**
+
+```bash
+# 1. Start server (optional, needed if you also call API tests)
+python -m uvicorn app.main:app --reload
+
+# 2. Continuously write Odoo MO data into PLC READ area
+python test_write_read_area_from_odoo.py --loop --limit 10 --interval-seconds 10 --write-retries 3
+
+# 3. In parallel, run middleware read/sync checks
+python test_plc_read.py
 python test_plc_sync.py
 ```
 
@@ -826,6 +879,7 @@ Remaining mo_batch rows: 9
 |-------------|---------|-------------|
 | `test_write_read_area.py` | Populate PLC READ area | Development, testing tanpa PLC real |
 | `test_write_read_area_from_csv.py` | Populate PLC READ area from CSV | Manual PLC input simulation |
+| `test_write_read_area_from_odoo.py` | Populate PLC READ area from Odoo MO list | Integration test tanpa edit CSV berulang |
 | `test_export_read_area_to_csv.py` | Export PLC READ area to CSV | Capture PLC snapshot |
 | `test_plc_read.py` | Verify read functionality | After PLC has data |
 | `test_plc_sync.py` | Test database sync | Verify actual_consumption update |
@@ -840,20 +894,22 @@ Remaining mo_batch rows: 9
 4. **Production**: PLC updates D6001-D6058 → `test_plc_sync.py` (periodic)
 5. **CSV Simulation**: `test_write_read_area_from_csv.py` → `test_plc_sync.py`
 6. **CSV Snapshot**: `test_export_read_area_to_csv.py` → edit CSV → `test_write_read_area_from_csv.py`
+7. **Odoo-driven READ Simulation**: `test_write_read_area_from_odoo.py --loop` -> `test_plc_sync.py`
 
 ---
 
 ## Next Steps
 
-1. ✅ Run migration: `alembic upgrade head`
-2. ✅ Populate database: `python test_plc_write_from_odoo.py`
-3. ✅ Test write: `python test_write_read_area.py`
-4. ✅ Test cycle: `python test_complete_cycle.py`
-5. ✅ Test MO lifecycle: `python test_mo_batch_process.py`
-6. ✅ Schedule periodic sync (production)
+1. Run migration: `alembic upgrade head`
+2. Populate database: `python test_plc_write_from_odoo.py`
+3. Test write: `python test_write_read_area.py`
+4. Test Odoo-driven READ feed: `python test_write_read_area_from_odoo.py --loop --limit 10 --interval-seconds 10 --write-retries 3`
+5. Test cycle: `python test_complete_cycle.py`
+6. Test MO lifecycle: `python test_mo_batch_process.py`
+7. Schedule periodic sync (production)
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** February 13, 2026  
+**Document Version:** 1.1  
+**Last Updated:** February 17, 2026  
 **Author:** FastAPI SCADA-Odoo Integration Team
