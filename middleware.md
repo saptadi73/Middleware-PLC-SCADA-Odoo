@@ -472,6 +472,102 @@ curl -X POST "http://localhost:8000/api/scada/mo-list-detailed?limit=10&offset=0
 
 ---
 
+### System Logs
+
+#### GET `/api/logs/`
+
+Get application logs from database for frontend monitoring.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `skip` | integer | 0 | Pagination offset |
+| `limit` | integer | 100 | Page size |
+| `level` | string | - | Exact log level filter (`INFO`, `WARNING`, `ERROR`, etc.) |
+| `module` | string | - | Partial match on logger/module name |
+| `search` | string | - | Partial match on log message |
+| `start_time` | datetime (ISO 8601) | - | Filter logs with `timestamp >= start_time` |
+| `end_time` | datetime (ISO 8601) | - | Filter logs with `timestamp <= end_time` |
+
+**Request:**
+```bash
+curl "http://localhost:8000/api/logs/?skip=0&limit=50&level=ERROR&start_time=2026-02-17T00:00:00&end_time=2026-02-17T23:59:59"
+```
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "id": "6dcf2f43-6b7b-4cce-9a1a-2b3fa74c8d08",
+      "timestamp": "2026-02-17T18:40:12.123456+00:00",
+      "level": "ERROR",
+      "module": "app.core.scheduler",
+      "message": "Task 2 failed: PLC timeout",
+      "batch_no": "4",
+      "mo_id": "WH/MO/00007"
+    }
+  ],
+  "meta": {
+    "total": 1240,
+    "skip": 0,
+    "limit": 50,
+    "has_next": true
+  }
+}
+```
+
+#### DELETE `/api/logs/clear`
+
+Cleanup logs with retention strategy.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `keep_last` | integer | 1000 | Keep N newest logs and delete older rows. Use `0` to delete all logs. |
+| `older_than_days` | integer | - | Delete only logs older than N days. Can be combined with `keep_last`. |
+
+**Request (keep latest 5000 logs):**
+```bash
+curl -X DELETE "http://localhost:8000/api/logs/clear?keep_last=5000"
+```
+
+**Request (delete logs older than 30 days, but still keep latest 1000 rows):**
+```bash
+curl -X DELETE "http://localhost:8000/api/logs/clear?older_than_days=30&keep_last=1000"
+```
+
+**Response:**
+```json
+{
+  "message": "Logs cleaned. Kept latest 1000 rows.",
+  "deleted_count": 17230,
+  "kept_count": 1000
+}
+```
+
+**Notes:**
+- Log records are stored in table `system_log`.
+- Database logging is enabled by `DatabaseLogHandler` in `app/main.py`.
+- SQLAlchemy engine logs and `uvicorn.access` logs are excluded to prevent logging loops/noise.
+
+**Automatic Cleanup (Scheduler Task 6):**
+- `ENABLE_TASK_6_LOG_CLEANUP=true`
+- `LOG_CLEANUP_INTERVAL_MINUTES=30`
+- `LOG_RETENTION_DAYS=7`
+- `LOG_CLEANUP_KEEP_LAST=2000`
+
+Scheduler Task 6 akan berjalan otomatis sesuai interval untuk menghapus log lebih lama dari retention days.
+
+**Current strict policy (recommended for active development/testing):**
+- Cleanup every 30 minutes
+- Delete logs older than 7 days
+- Always keep latest 2000 rows as safety buffer
+
+---
+
 ### Admin Endpoints
 
 #### GET `/api/admin/batch-status`

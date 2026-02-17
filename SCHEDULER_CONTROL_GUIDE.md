@@ -17,6 +17,32 @@ Sistem scheduler memiliki **4 task utama** yang dapat dikontrol secara individua
 
 ---
 
+## Update Terbaru (Feb 17, 2026)
+
+Saat ini scheduler sudah berjalan dengan **6 task**:
+
+| Task | Fungsi | Control Flag | Interval Flag |
+|------|--------|--------------|---------------|
+| **Task 1** | Auto-sync MO dari Odoo | `ENABLE_TASK_1_AUTO_SYNC` | `SYNC_INTERVAL_MINUTES` |
+| **Task 2** | PLC read sync | `ENABLE_TASK_2_PLC_READ` | `PLC_READ_INTERVAL_MINUTES` |
+| **Task 3** | Process completed batches | `ENABLE_TASK_3_PROCESS_COMPLETED` | `PROCESS_COMPLETED_INTERVAL_MINUTES` |
+| **Task 4** | Health monitoring | `ENABLE_TASK_4_HEALTH_MONITOR` | `HEALTH_MONITOR_INTERVAL_MINUTES` |
+| **Task 5** | Equipment failure monitoring | `ENABLE_TASK_5_EQUIPMENT_FAILURE` | `EQUIPMENT_FAILURE_INTERVAL_MINUTES` |
+| **Task 6** | System log cleanup | `ENABLE_TASK_6_LOG_CLEANUP` | `LOG_CLEANUP_INTERVAL_MINUTES` |
+
+Konfigurasi tambahan Task 6:
+
+```env
+LOG_RETENTION_DAYS=7
+LOG_CLEANUP_KEEP_LAST=2000
+```
+
+Policy ketat saat ini:
+- Cleanup setiap `30` menit
+- Hapus log lebih lama dari `7` hari
+- Tetap simpan `2000` log terbaru sebagai safety buffer
+
+
 ## ⚙️ Configuration dalam .env
 
 ### Scheduler Enable/Disable Flags

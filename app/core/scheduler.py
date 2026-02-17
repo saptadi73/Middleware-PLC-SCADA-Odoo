@@ -8,12 +8,12 @@ Enhanced Background Scheduler for Multiple Tasks:
 """
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, List
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import create_engine, text, select
+from sqlalchemy import create_engine, desc, text, select
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
@@ -25,6 +25,7 @@ from app.services.odoo_consumption_service import get_consumption_service
 from app.services.plc_equipment_failure_service import get_equipment_failure_service
 from app.services.equipment_failure_db_service import EquipmentFailureDbService
 from app.services.equipment_failure_service import EquipmentFailureService
+from app.models.system_log import SystemLog
 from app.models.tablesmo_batch import TableSmoBatch
 
 logger = logging.getLogger(__name__)
@@ -70,12 +71,12 @@ async def auto_sync_mo_task():
         
         if count > 0:
             logger.info(
-                f"[TASK 1] ⏸ Table mo_batch has {count} records. "
+                f"[TASK 1] ? Table mo_batch has {count} records. "
                 "Skipping sync - waiting for PLC to complete all batches."
             )
             return
         
-        logger.info("[TASK 1] ✓ Table mo_batch is empty. Fetching new batches from Odoo...")
+        logger.info("[TASK 1] ? Table mo_batch is empty. Fetching new batches from Odoo...")
         logger.debug(f"[TASK 1-DEBUG-3] Odoo fetch params: limit={settings.sync_batch_limit}, offset=0")
         
         # 2. Fetch dari Odoo
@@ -104,7 +105,7 @@ async def auto_sync_mo_task():
         db = SessionLocal()
         try:
             sync_mo_list_to_db(db, mo_list)
-            logger.info(f"[TASK 1] ✓ Database sync completed: {len(mo_list)} MO batches")
+            logger.info(f"[TASK 1] ? Database sync completed: {len(mo_list)} MO batches")
             logger.debug("[TASK 1-DEBUG-8] Database sync successful")
             
             # 4. WRITE batch data ke PLC memory
@@ -112,15 +113,15 @@ async def auto_sync_mo_task():
             from app.services.mo_batch_service import write_mo_batch_queue_to_plc
             
             written = write_mo_batch_queue_to_plc(db, start_slot=1, limit=len(mo_list))
-            logger.info(f"[TASK 1] ✓ PLC write completed: {written} batches written to PLC")
+            logger.info(f"[TASK 1] ? PLC write completed: {written} batches written to PLC")
             logger.debug(f"[TASK 1-DEBUG-10] Batches written count: {written}")
-            logger.info(f"[TASK 1] ✓ Auto-sync completed: {len(mo_list)} MO batches synced & written to PLC")
+            logger.info(f"[TASK 1] ? Auto-sync completed: {len(mo_list)} MO batches synced & written to PLC")
             
         finally:
             db.close()
             
     except Exception as exc:
-        logger.exception("[TASK 1] ✗ ERROR in auto-sync task: %s", str(exc))
+        logger.exception("[TASK 1] ? ERROR in auto-sync task: %s", str(exc))
         logger.error(f"[TASK 1-ERROR] Exception type: {type(exc).__name__}")
 
 
@@ -181,7 +182,7 @@ async def plc_read_sync_task():
                 
                 if result.get("updated"):
                     logger.info(
-                        f"[TASK 2] ✓ Updated mo_batch for MO: {mo_id} from PLC data"
+                        f"[TASK 2] ? Updated mo_batch for MO: {mo_id} from PLC data"
                     )
                     logger.debug(f"[TASK 2-DEBUG-8] Update details: {result}")
                 else:
@@ -190,15 +191,15 @@ async def plc_read_sync_task():
                     )
             else:
                 error = result.get("error", "Unknown error")
-                logger.warning(f"[TASK 2] ⚠ PLC sync failed: {error}")
+                logger.warning(f"[TASK 2] ? PLC sync failed: {error}")
                 logger.debug(f"[TASK 2-DEBUG-9] Error details: {result}")
                 
         except Exception as e:
-            logger.error(f"[TASK 2] ✗ Error reading from PLC: {e}", exc_info=True)
+            logger.error(f"[TASK 2] ? Error reading from PLC: {e}", exc_info=True)
             logger.error(f"[TASK 2-ERROR] Exception type: {type(e).__name__}")
             
     except Exception as exc:
-        logger.exception("[TASK 2] ✗ ERROR in PLC read sync task: %s", str(exc))
+        logger.exception("[TASK 2] ? ERROR in PLC read sync task: %s", str(exc))
         logger.error(f"[TASK 2-ERROR] Exception type: {type(exc).__name__}")
 
 
@@ -366,7 +367,7 @@ async def process_completed_batches_task():
                     
                     # Send to Odoo
                     equipment_id = str(batch.equipment_id_batch or "PLC01")
-                    logger.info(f"[TASK 3] ➜ Sending Odoo sync request for batch #{batch_no} (MO: {mo_id}, Equipment: {equipment_id})...")
+                    logger.info(f"[TASK 3] ? Sending Odoo sync request for batch #{batch_no} (MO: {mo_id}, Equipment: {equipment_id})...")
                     logger.debug(f"[TASK 3-DEBUG-11] Calling consumption_service.process_batch_consumption()")
                     logger.debug(f"[TASK 3-DEBUG-12] Parameters: mo_id={mo_id}, equipment_id={equipment_id}")
                     logger.debug(
@@ -394,7 +395,7 @@ async def process_completed_batches_task():
                     errors = consumption_details.get("errors") or []
                     if partial_success or errors:
                         logger.error(
-                            f"[TASK 3] ⚠ Odoo sync PARTIAL/ERROR for batch #{batch_no} "
+                            f"[TASK 3] ? Odoo sync PARTIAL/ERROR for batch #{batch_no} "
                             f"(MO: {mo_id}). errors={errors}"
                         )
                         logger.debug(
@@ -404,7 +405,7 @@ async def process_completed_batches_task():
                         continue
 
                     if result.get("success"):
-                        logger.info(f"[TASK 3] ✓ Odoo sync SUCCESS for batch #{batch_no} (MO: {mo_id})")
+                        logger.info(f"[TASK 3] ? Odoo sync SUCCESS for batch #{batch_no} (MO: {mo_id})")
                         logger.debug(f"[TASK 3-DEBUG-14] Odoo response message: {result.get('message', 'N/A')}")
                         
                         # Archive + delete in one transaction, and mark update_odoo=True atomically
@@ -412,12 +413,12 @@ async def process_completed_batches_task():
                         if history_service.archive_batch(batch, status="completed", mark_synced=True):
                             processed_count += 1
                             logger.info(
-                                f"[TASK 3] ✓✓✓ COMPLETE: Batch #{batch_no} "
+                                f"[TASK 3] ??? COMPLETE: Batch #{batch_no} "
                                 f"(MO: {mo_id}) synced & archived"
                             )
                             logger.debug(f"[TASK 3-DEBUG-16] Batch archived and removed from mo_batch")
                         else:
-                            logger.error(f"[TASK 3] ✗ Failed to archive batch #{batch_no}")
+                            logger.error(f"[TASK 3] ? Failed to archive batch #{batch_no}")
                             logger.debug(f"[TASK 3-DEBUG-ERROR-1] archive_batch() returned False")
                             failed_count += 1
                     
@@ -425,7 +426,7 @@ async def process_completed_batches_task():
                         # Odoo sync failed - keep batch in queue, will retry next cycle
                         error_msg = result.get("error", "Unknown error")
                         logger.warning(
-                            f"[TASK 3] ⚠ Odoo sync FAILED for batch #{batch_no} (MO: {mo_id}): {error_msg}"
+                            f"[TASK 3] ? Odoo sync FAILED for batch #{batch_no} (MO: {mo_id}): {error_msg}"
                         )
                         logger.debug(f"[TASK 3-DEBUG-ERROR-3] Odoo sync failure details: {result}")
                         logger.debug(
@@ -435,7 +436,7 @@ async def process_completed_batches_task():
                 
                 except Exception as e:
                     logger.error(
-                        f"[TASK 3] ✗ Exception processing batch #{batch.batch_no}: {str(e)}",
+                        f"[TASK 3] ? Exception processing batch #{batch.batch_no}: {str(e)}",
                         exc_info=True
                     )
                     logger.error(f"[TASK 3-ERROR] Exception type: {type(e).__name__}")
@@ -446,7 +447,7 @@ async def process_completed_batches_task():
             # Summary log
             total = len(completed_batches)
             logger.info(
-                f"[TASK 3] Cycle complete: ✓ {processed_count} archived, ⚠ {failed_count} failed, "
+                f"[TASK 3] Cycle complete: ? {processed_count} archived, ? {failed_count} failed, "
                 f"total {total} batches"
             )
             
@@ -534,7 +535,7 @@ async def equipment_failure_monitoring_task():
                 failure_timestamp = failure_data.get("failure_timestamp")
                 
                 logger.warning(
-                    f"[TASK 5] ✓ Equipment Failure Detected from PLC:\n"
+                    f"[TASK 5] ? Equipment Failure Detected from PLC:\n"
                     f"  Equipment Code: {equipment_code} (type: {type(equipment_code).__name__})\n"
                     f"  Failure Type: {failure_info} (type: {type(failure_info).__name__})\n"
                     f"  Timestamp: {failure_timestamp} (type: {type(failure_timestamp).__name__})"
@@ -547,10 +548,10 @@ async def equipment_failure_monitoring_task():
                             failure_timestamp,
                             "%Y-%m-%d %H:%M:%S",
                         )
-                        logger.info(f"[TASK 5] ✓ Parsed failure_date: {failure_date}")
+                        logger.info(f"[TASK 5] ? Parsed failure_date: {failure_date}")
                     except ValueError as e:
                         logger.warning(
-                            f"[TASK 5] ⚠ Invalid timestamp format: {failure_timestamp} - {e}"
+                            f"[TASK 5] ? Invalid timestamp format: {failure_timestamp} - {e}"
                         )
 
                 if equipment_code and failure_info and failure_date:
@@ -568,7 +569,7 @@ async def equipment_failure_monitoring_task():
                         
                         if save_result.get("saved"):
                             logger.info(
-                                f"[TASK 5] ✓ Equipment failure saved to DB\n"
+                                f"[TASK 5] ? Equipment failure saved to DB\n"
                                 f"  Record ID: {save_result.get('record_id')}\n"
                                 f"  Equipment: {equipment_code}\n"
                                 f"  Description: {failure_info}"
@@ -598,25 +599,25 @@ async def equipment_failure_monitoring_task():
                                 
                                 if odoo_result.get("success"):
                                     logger.info(
-                                        f"[TASK 5] ✓ Odoo sync successful\n"
+                                        f"[TASK 5] ? Odoo sync successful\n"
                                         f"  Status: {odoo_result.get('status')}\n"
                                         f"  Message: {odoo_result.get('message')}\n"
                                         f"  Data: {odoo_result.get('data')}"
                                     )
                                 else:
                                     logger.error(
-                                        f"[TASK 5] ✗ Odoo sync failed\n"
+                                        f"[TASK 5] ? Odoo sync failed\n"
                                         f"  Status: {odoo_result.get('status')}\n"
                                         f"  Message: {odoo_result.get('message')}"
                                     )
                             except Exception as odoo_error:
                                 logger.error(
-                                    f"[TASK 5] ✗ Exception during Odoo sync: {odoo_error}",
+                                    f"[TASK 5] ? Exception during Odoo sync: {odoo_error}",
                                     exc_info=True
                                 )
                         else:
                             logger.debug(
-                                f"[TASK 5] ⊘ Skipped DB save (duplicate detection)\n"
+                                f"[TASK 5] ? Skipped DB save (duplicate detection)\n"
                                 f"  Reason: {save_result.get('reason')}\n"
                                 f"  Equipment: {equipment_code}"
                             )
@@ -624,7 +625,7 @@ async def equipment_failure_monitoring_task():
                         db.close()
                 else:
                     logger.debug(
-                        f"[TASK 5] ⚠ Missing data for DB save:\n"
+                        f"[TASK 5] ? Missing data for DB save:\n"
                         f"  equipment_code={equipment_code}\n"
                         f"  failure_info={failure_info}\n"
                         f"  failure_date={failure_date}"
@@ -640,6 +641,53 @@ async def equipment_failure_monitoring_task():
             
     except Exception as exc:
         logger.exception("[TASK 5] Error in equipment failure monitoring task: %s", str(exc))
+
+
+async def system_log_cleanup_task():
+    """
+    Task 6: Cleanup old logs from system_log table.
+
+    Rules:
+    - Delete logs older than LOG_RETENTION_DAYS
+    - Keep latest LOG_CLEANUP_KEEP_LAST rows as safety
+    """
+    settings = get_settings()
+    retention_days = settings.log_retention_days
+    keep_last = settings.log_cleanup_keep_last
+
+    if retention_days < 1:
+        logger.warning(
+            "[TASK 6] Skip cleanup: LOG_RETENTION_DAYS must be >= 1, got %s",
+            retention_days,
+        )
+        return
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    db = SessionLocal()
+    try:
+        query = db.query(SystemLog).filter(SystemLog.timestamp < cutoff)
+        if keep_last > 0:
+            keep_subquery = (
+                select(SystemLog.id)
+                .order_by(desc(SystemLog.timestamp))
+                .limit(keep_last)
+            )
+            query = query.filter(~SystemLog.id.in_(keep_subquery))
+
+        deleted = query.delete(synchronize_session=False)
+        db.commit()
+        logger.info(
+            "[TASK 6] Log cleanup completed. deleted=%s cutoff=%s keep_last=%s",
+            deleted,
+            cutoff.isoformat(),
+            keep_last,
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.exception("[TASK 6] Error in log cleanup task: %s", str(exc))
+    finally:
+        db.close()
 
 
 def start_scheduler():
@@ -671,11 +719,11 @@ def start_scheduler():
             replace_existing=True,
         )
         logger.info(
-            f"✓ Task 1: Auto-sync MO scheduler added "
+            f"? Task 1: Auto-sync MO scheduler added "
             f"(interval: {settings.sync_interval_minutes} minutes)"
         )
     else:
-        logger.warning(f"⊘ Task 1: Auto-sync MO scheduler DISABLED (ENABLE_TASK_1_AUTO_SYNC=false)")
+        logger.warning(f"? Task 1: Auto-sync MO scheduler DISABLED (ENABLE_TASK_1_AUTO_SYNC=false)")
     
     # Task 2: PLC read sync (every 5 minutes for near real-time updates)
     if settings.enable_task_2_plc_read:
@@ -687,11 +735,11 @@ def start_scheduler():
             replace_existing=True,
         )
         logger.info(
-            f"✓ Task 2: PLC read sync scheduler added "
+            f"? Task 2: PLC read sync scheduler added "
             f"(interval: {settings.plc_read_interval_minutes} minutes)"
         )
     else:
-        logger.warning(f"⊘ Task 2: PLC read sync scheduler DISABLED (ENABLE_TASK_2_PLC_READ=false)")
+        logger.warning(f"? Task 2: PLC read sync scheduler DISABLED (ENABLE_TASK_2_PLC_READ=false)")
     
     # Task 3: Process completed batches (every 3 minutes)
     if settings.enable_task_3_process_completed:
@@ -703,11 +751,11 @@ def start_scheduler():
             replace_existing=True,
         )
         logger.info(
-            f"✓ Task 3: Process completed batches scheduler added "
+            f"? Task 3: Process completed batches scheduler added "
             f"(interval: {settings.process_completed_interval_minutes} minutes)"
         )
     else:
-        logger.warning(f"⊘ Task 3: Process completed batches scheduler DISABLED (ENABLE_TASK_3_PROCESS_COMPLETED=false)")
+        logger.warning(f"? Task 3: Process completed batches scheduler DISABLED (ENABLE_TASK_3_PROCESS_COMPLETED=false)")
     
     # Task 4: Monitor batch health (every 10 minutes)
     if settings.enable_task_4_health_monitor:
@@ -719,11 +767,11 @@ def start_scheduler():
             replace_existing=True,
         )
         logger.info(
-            f"✓ Task 4: Batch health monitoring scheduler added "
+            f"? Task 4: Batch health monitoring scheduler added "
             f"(interval: {settings.health_monitor_interval_minutes} minutes)"
         )
     else:
-        logger.warning(f"⊘ Task 4: Batch health monitoring scheduler DISABLED (ENABLE_TASK_4_HEALTH_MONITOR=false)")
+        logger.warning(f"? Task 4: Batch health monitoring scheduler DISABLED (ENABLE_TASK_4_HEALTH_MONITOR=false)")
     
     # Task 5: Equipment failure monitoring (every 5 minutes by default)
     if settings.enable_task_5_equipment_failure:
@@ -735,11 +783,29 @@ def start_scheduler():
             replace_existing=True,
         )
         logger.info(
-            f"✓ Task 5: Equipment failure monitoring scheduler added "
+            f"? Task 5: Equipment failure monitoring scheduler added "
             f"(interval: {settings.equipment_failure_interval_minutes} minutes)"
         )
     else:
-        logger.warning(f"⊘ Task 5: Equipment failure monitoring scheduler DISABLED (ENABLE_TASK_5_EQUIPMENT_FAILURE=false)")
+        logger.warning(f"? Task 5: Equipment failure monitoring scheduler DISABLED (ENABLE_TASK_5_EQUIPMENT_FAILURE=false)")
+
+    # Task 6: System log cleanup (daily by default)
+    if settings.enable_task_6_log_cleanup:
+        scheduler.add_job(
+            system_log_cleanup_task,
+            trigger="interval",
+            minutes=settings.log_cleanup_interval_minutes,
+            id="system_log_cleanup",
+            replace_existing=True,
+        )
+        logger.info(
+            f"? Task 6: System log cleanup scheduler added "
+            f"(interval: {settings.log_cleanup_interval_minutes} minutes, "
+            f"retention: {settings.log_retention_days} days, "
+            f"keep_last: {settings.log_cleanup_keep_last})"
+        )
+    else:
+        logger.warning("? Task 6: System log cleanup scheduler DISABLED (ENABLE_TASK_6_LOG_CLEANUP=false)")
     
     scheduler.start()
     
@@ -750,16 +816,18 @@ def start_scheduler():
         settings.enable_task_3_process_completed,
         settings.enable_task_4_health_monitor,
         settings.enable_task_5_equipment_failure,
+        settings.enable_task_6_log_cleanup,
     ]
     task_count = sum(enabled_tasks)
     
     logger.info(
-        f"✓✓✓ Enhanced Scheduler STARTED with {task_count}/5 tasks enabled ✓✓✓\n"
-        f"  - Task 1: Auto-sync MO ({settings.sync_interval_minutes} min) - {'✓' if settings.enable_task_1_auto_sync else '⊘'}\n"
-        f"  - Task 2: PLC read sync ({settings.plc_read_interval_minutes} min) - {'✓' if settings.enable_task_2_plc_read else '⊘'}\n"
-        f"  - Task 3: Process completed ({settings.process_completed_interval_minutes} min) - {'✓' if settings.enable_task_3_process_completed else '⊘'}\n"
-        f"  - Task 4: Health monitoring ({settings.health_monitor_interval_minutes} min) - {'✓' if settings.enable_task_4_health_monitor else '⊘'}\n"
-        f"  - Task 5: Equipment failure ({settings.equipment_failure_interval_minutes} min) - {'✓' if settings.enable_task_5_equipment_failure else '⊘'}"
+        f"??? Enhanced Scheduler STARTED with {task_count}/6 tasks enabled ???\n"
+        f"  - Task 1: Auto-sync MO ({settings.sync_interval_minutes} min) - {'?' if settings.enable_task_1_auto_sync else '?'}\n"
+        f"  - Task 2: PLC read sync ({settings.plc_read_interval_minutes} min) - {'?' if settings.enable_task_2_plc_read else '?'}\n"
+        f"  - Task 3: Process completed ({settings.process_completed_interval_minutes} min) - {'?' if settings.enable_task_3_process_completed else '?'}\n"
+        f"  - Task 4: Health monitoring ({settings.health_monitor_interval_minutes} min) - {'?' if settings.enable_task_4_health_monitor else '?'}\n"
+        f"  - Task 5: Equipment failure ({settings.equipment_failure_interval_minutes} min) - {'?' if settings.enable_task_5_equipment_failure else '?'}\n"
+        f"  - Task 6: Log cleanup ({settings.log_cleanup_interval_minutes} min) - {'?' if settings.enable_task_6_log_cleanup else '?'}"
     )
 
 
@@ -769,7 +837,7 @@ def stop_scheduler():
     
     if scheduler and scheduler.running:
         scheduler.shutdown()
-        logger.info("✓ Enhanced scheduler stopped (all tasks terminated)")
+        logger.info("? Enhanced scheduler stopped (all tasks terminated)")
 
 
 @asynccontextmanager

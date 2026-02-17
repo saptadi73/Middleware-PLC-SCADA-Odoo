@@ -20,6 +20,23 @@ Sistem pengontrol scheduler dengan individual task control telah berhasil diimpl
 
 ---
 
+## Update Terbaru (Feb 17, 2026)
+
+Scheduler sekarang mencakup **6 task** (bukan 4):
+- Task 5: Equipment failure monitoring
+- Task 6: System log cleanup
+
+Konfigurasi Task 6:
+```env
+ENABLE_TASK_6_LOG_CLEANUP=true
+LOG_CLEANUP_INTERVAL_MINUTES=30
+LOG_RETENTION_DAYS=7
+LOG_CLEANUP_KEEP_LAST=2000
+```
+
+Artinya cleanup log berjalan otomatis tiap 30 menit, menghapus log lebih lama dari 7 hari, dan tetap menyimpan 2000 log terbaru sebagai safety buffer.
+
+
 ## 📁 File yang Dimodifikasi/Dibuat
 
 ### 1. **app/core/config.py** ✅ Modified
