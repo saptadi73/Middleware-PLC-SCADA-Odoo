@@ -32,6 +32,47 @@ class PLCSyncService:
         self.plc_read_service = get_plc_read_service()
         self.consumption_service = get_consumption_service()
 
+    def _normalize_binary_status(
+        self,
+        raw_value: Any,
+        field_name: str,
+    ) -> Optional[bool]:
+        """Normalize PLC status into strict binary value (0/1 only)."""
+        if isinstance(raw_value, bool):
+            return raw_value
+
+        if isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool):
+            numeric = int(raw_value)
+            if numeric in (0, 1):
+                return bool(numeric)
+            logger.warning(
+                "Invalid %s from PLC (must be 0/1): %s. Skip status update.",
+                field_name,
+                raw_value,
+            )
+            return None
+
+        if isinstance(raw_value, str):
+            normalized = raw_value.strip().lower()
+            if normalized in ("0", "false"):
+                return False
+            if normalized in ("1", "true"):
+                return True
+            logger.warning(
+                "Invalid %s from PLC string (must be 0/1 or true/false): %s. Skip status update.",
+                field_name,
+                raw_value,
+            )
+            return None
+
+        logger.warning(
+            "Invalid %s type from PLC: %s (%s). Skip status update.",
+            field_name,
+            raw_value,
+            type(raw_value).__name__,
+        )
+        return None
+
     async def sync_from_plc(self) -> Dict[str, Any]:
         """
         Read data from PLC and update mo_batch if values changed.
@@ -350,23 +391,31 @@ class PLCSyncService:
             # Backward compatibility with previous key naming
             new_status_mfg = plc_data.get("status_manufacturing")
         if new_status_mfg is not None:
-            # Convert to boolean
-            status_bool = bool(new_status_mfg)
-            current_status: bool = batch.status_manufacturing  # type: ignore
-            if current_status != status_bool:
-                batch.status_manufacturing = status_bool  # type: ignore
-                changed = True
-                logger.debug(
-                    f"Updated status_manufacturing: "
-                    f"{current_status} → {status_bool}"
-                )
+            status_bool = self._normalize_binary_status(
+                new_status_mfg,
+                "status_manufacturing",
+            )
+            if status_bool is not None:
+                current_status: bool = batch.status_manufacturing  # type: ignore
+                if current_status != status_bool:
+                    batch.status_manufacturing = status_bool  # type: ignore
+                    changed = True
+                    logger.debug(
+                        f"Updated status_manufacturing: "
+                        f"{current_status} -> {status_bool}"
+                    )
 
         new_status_op = status_obj.get("operation")
         if new_status_op is None:
             # Backward compatibility with previous key naming
             new_status_op = plc_data.get("status_operation")
         if new_status_op is not None:
-            status_bool = bool(new_status_op)
+            status_bool = self._normalize_binary_status(
+                new_status_op,
+                "status_operation",
+            )
+            if status_bool is None:
+                return changed
             current_status_op: bool = batch.status_operation  # type: ignore
             logger.debug(
                 "Status operation check: plc=%s db=%s mo_id=%s batch_no=%s",
@@ -532,3 +581,5 @@ def get_plc_sync_service() -> PLCSyncService:
     if _plc_sync_service is None:
         _plc_sync_service = PLCSyncService()
     return _plc_sync_service
+
+

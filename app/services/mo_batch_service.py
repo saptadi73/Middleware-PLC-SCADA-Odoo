@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.tablesmo_batch import TableSmoBatch
 from app.models.tablesmo_history import TableSmoHistory
+from app.services.plc_handshake_service import get_handshake_service
 from app.services.plc_write_service import get_plc_write_service
 
 
@@ -144,41 +145,59 @@ def write_mo_batch_queue_to_plc(
     )
 
     plc_service = get_plc_write_service()
-    written = 0
-    plc_slot = start_slot
-    for batch in batches:
-        if plc_slot > 30:
-            break
+    handshake = get_handshake_service()
 
-        consumption_val = cast(Optional[NumericValue], batch.consumption)
-        actual_weight_val = cast(
-            Optional[NumericValue], batch.actual_weight_quantity_finished_goods
+    plc_ready = handshake.check_write_area_status()
+    if not plc_ready:
+        raise RuntimeError(
+            "Cannot write batch queue: PLC handshake not ready (D7076=0). "
+            "Wait for PLC to read previous data first."
         )
 
-        batch_data = {
-            "mo_id": batch.mo_id,
-            "consumption": _to_float(consumption_val),
-            "equipment_id_batch": batch.equipment_id_batch,
-            "finished_goods": batch.finished_goods,
-            "status_manufacturing": bool(batch.status_manufacturing),
-            "status_operation": bool(batch.status_operation),
-            "actual_weight_quantity_finished_goods": (
-                _to_float(actual_weight_val)
-            ),
-        }
+    written = 0
+    plc_slot = start_slot
+    try:
+        for batch in batches:
+            if plc_slot > 30:
+                break
 
-        for letter in "abcdefghijklm":
-            batch_data[f"silo_{letter}"] = getattr(batch, f"silo_{letter}", None)
-            batch_data[f"component_silo_{letter}_name"] = getattr(
-                batch, f"component_silo_{letter}_name", None
-            )
-            batch_data[f"consumption_silo_{letter}"] = getattr(
-                batch, f"consumption_silo_{letter}", None
+            consumption_val = cast(Optional[NumericValue], batch.consumption)
+            actual_weight_val = cast(
+                Optional[NumericValue], batch.actual_weight_quantity_finished_goods
             )
 
-        plc_service.write_mo_batch_to_plc(batch_data, batch_number=plc_slot)
-        written += 1
-        plc_slot += 1
+            batch_data = {
+                "mo_id": batch.mo_id,
+                "consumption": _to_float(consumption_val),
+                "equipment_id_batch": batch.equipment_id_batch,
+                "finished_goods": batch.finished_goods,
+                "status_manufacturing": bool(batch.status_manufacturing),
+                "status_operation": bool(batch.status_operation),
+                "actual_weight_quantity_finished_goods": (
+                    _to_float(actual_weight_val)
+                ),
+            }
+
+            for letter in "abcdefghijklm":
+                batch_data[f"silo_{letter}"] = getattr(batch, f"silo_{letter}", None)
+                batch_data[f"component_silo_{letter}_name"] = getattr(
+                    batch, f"component_silo_{letter}_name", None
+                )
+                batch_data[f"consumption_silo_{letter}"] = getattr(
+                    batch, f"consumption_silo_{letter}", None
+                )
+
+            plc_service.write_mo_batch_to_plc(
+                batch_data,
+                batch_number=plc_slot,
+                skip_handshake_check=True,
+            )
+            written += 1
+            plc_slot += 1
+    finally:
+        # If any batch has been written, mark WRITE area as unread by PLC.
+        if written > 0:
+            handshake.reset_write_area_status()
 
     return written
 

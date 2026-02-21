@@ -372,7 +372,12 @@ class PLCWriteService:
             # Parse response (raises exception on error)
             parse_memory_write_response(response.raw)
     
-    def write_mo_batch_to_plc(self, mo_batch_data: Dict[str, Any], batch_number: int = 1) -> None:
+    def write_mo_batch_to_plc(
+        self,
+        mo_batch_data: Dict[str, Any],
+        batch_number: int = 1,
+        skip_handshake_check: bool = False,
+    ) -> None:
         """
         Write data dari mo_batch table ke PLC mengikuti MASTER_BATCH_REFERENCE.json mapping.
         
@@ -452,7 +457,11 @@ class PLCWriteService:
                 logger.debug(f"Set weight field: {item['Informasi']} = {plc_data[item['Informasi']]}")
         
         # Write to PLC
-        self.write_batch(batch_name, plc_data)
+        self.write_batch(
+            batch_name,
+            plc_data,
+            skip_handshake_check=skip_handshake_check,
+        )
         
         logger.info(
             f"✓ MO batch data written to PLC {batch_name}: "

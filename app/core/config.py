@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     plc_read_interval_minutes: int = Field(default=5, validation_alias="PLC_READ_INTERVAL_MINUTES")
     process_completed_interval_minutes: int = Field(default=3, validation_alias="PROCESS_COMPLETED_INTERVAL_MINUTES")
     health_monitor_interval_minutes: int = Field(default=10, validation_alias="HEALTH_MONITOR_INTERVAL_MINUTES")
+    batch_stuck_threshold_minutes: int = Field(default=15, validation_alias="BATCH_STUCK_THRESHOLD_MINUTES")
     equipment_failure_interval_minutes: int = Field(default=5, validation_alias="EQUIPMENT_FAILURE_INTERVAL_MINUTES")
     log_cleanup_interval_minutes: int = Field(default=1440, validation_alias="LOG_CLEANUP_INTERVAL_MINUTES")
     log_retention_days: int = Field(default=30, validation_alias="LOG_RETENTION_DAYS")

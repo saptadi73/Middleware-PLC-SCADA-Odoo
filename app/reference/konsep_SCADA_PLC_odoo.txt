@@ -7,7 +7,7 @@ Semua service telah komplit:
 6. Update hanya akan dilakukan jika mo_id masih ada dan status manufacturing belum selesai (status_manufacturing != 1).
 7. Jika status_manufacturing sudah selesai (status_manufacturing == 1), maka batch tersebut tidak akan diupdate lagi, meskipun ada perubahan data di PLC.
 8. Ada proses terpisah yang selalu baca mo_batch, jika ada mo_id yang sudah status_manufacturing == 1, maka akan update ke Odoo untuk menandakan bahwa MO tersebut sudah selesai diproses di PLC, dan pindah datanya ke table mo_histories. Di Mo_batch data mo tersebut dihapus jika sudah selesai sukses update ke Odoo.
-9. Proses terpisah ini juga akan melakukan update ke Odoo jika ada batch yang mengalami kegagalan proses di PLC, dengan menandakan status_manufacturing == 2 (gagal), dan update ke Odoo untuk menandakan bahwa MO tersebut gagal diproses di PLC, dan pindah datanya ke table mo_histories dengan status gagal. Di Mo_batch data mo tersebut dihapus jika sudah selesai sukses update ke Odoo.
+9. Proses terpisah ini juga akan melakukan update ke Odoo jika ada batch yang mengalami kegagalan proses di PLC, dengan menandakan status_operation == 1 (gagal) dan status_manufacturing tetap == 0, lalu update ke Odoo untuk menandakan bahwa MO tersebut gagal diproses di PLC, dan pindah datanya ke table mo_histories dengan status gagal. Di mo_batch data MO tersebut dihapus jika sudah selesai sukses update ke Odoo.
 
 Kebutuhan selanjutnya :
 1. Membuat scheduler yang akan menjalankan proses rutin di atas, sebaiknya bagaimana. Mana yang dihandle 1 script rutin untuk semua task, dan mana yang harus dipisah.

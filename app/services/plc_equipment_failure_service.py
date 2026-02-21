@@ -244,13 +244,23 @@ class PLCEquipmentFailureService:
                 "failure_timestamp": self._build_timestamp(result),
                 "raw_data": raw_data,
             }
-            
-            logger.info(f"✓ Successfully read equipment failure data: {equipment_failure_data['equipment_code']}")
-            
-            # Mark equipment failure area as read after successful read
+
+            if not self._has_valid_failure_event(equipment_failure_data):
+                logger.debug(
+                    "Equipment failure payload is not a valid event, skip handshake ack: %s",
+                    equipment_failure_data,
+                )
+                return None
+
+            logger.info(
+                "Successfully read equipment failure data: %s",
+                equipment_failure_data["equipment_code"],
+            )
+
+            # Mark equipment failure area as read only for valid failure event
             handshake = get_handshake_service()
             handshake.mark_equipment_failure_as_read()  # Set D8022 = 1
-            
+
             return equipment_failure_data
         
         except Exception as e:
@@ -271,9 +281,21 @@ class PLCEquipmentFailureService:
                 return f"{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}"
         except Exception as e:
             logger.error(f"Error building timestamp: {e}")
-        
         return None
-    
+
+    def _has_valid_failure_event(self, payload: Dict[str, Any]) -> bool:
+        """Validate minimal failure payload before acknowledging PLC."""
+        equipment_code = str(payload.get("equipment_code") or "").strip()
+        failure_info = str(payload.get("failure_info") or "").strip()
+        failure_timestamp = str(payload.get("failure_timestamp") or "").strip()
+
+        if not equipment_code or not failure_info or not failure_timestamp:
+            return False
+
+        normalized_info = failure_info.upper()
+        invalid_markers = {"0", "NONE", "NO_FAILURE", "NO ERROR", "NO_ERROR"}
+        return normalized_info not in invalid_markers
+
     def get_mapping_info(self) -> Dict[str, Any]:
         """Get mapping reference info."""
         return {
@@ -286,3 +308,5 @@ class PLCEquipmentFailureService:
 def get_equipment_failure_service() -> PLCEquipmentFailureService:
     """Factory function untuk get equipment failure service instance."""
     return PLCEquipmentFailureService()
+
+

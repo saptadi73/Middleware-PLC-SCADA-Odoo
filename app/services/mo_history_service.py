@@ -237,27 +237,17 @@ class MOHistoryService:
 
             mo_id = batch.mo_id
             
-            # Move to history dengan status cancelled
-            history = self.move_to_history(
+            archived = self.archive_batch(
                 batch,
                 status="cancelled",
                 notes=notes or "Manually cancelled by operator",
+                mark_synced=False,
             )
 
-            if not history:
+            if not archived:
                 return {
                     "success": False,
-                    "message": f"Failed to move batch {batch_no} to history",
-                }
-
-            # Delete dari mo_batch
-            if not self.delete_from_batch(batch):
-                # Rollback history jika delete gagal
-                self.db.delete(history)
-                self.db.commit()
-                return {
-                    "success": False,
-                    "message": f"Failed to delete batch {batch_no} from mo_batch",
+                    "message": f"Failed to archive cancelled batch {batch_no}",
                 }
 
             logger.info(
@@ -304,17 +294,31 @@ class MOHistoryService:
 
     def get_failed_batches(self) -> List[TableSmoBatch]:
         """
-        Get all failed batches (status_manufacturing = 2).
-        
-        Note: Perlu tambah column status_manufacturing dengan type yang support nilai 2,
-        atau gunakan column terpisah untuk failure status.
+        Get all failed batches.
+
+        Failure is represented by:
+        - status_operation = 1 (failed)
+        - status_manufacturing = 0 (not completed)
 
         Returns:
             List of failed batch records
         """
-        # TODO: Implement jika ada field untuk track failed status
-        logger.warning("Failed batch tracking not yet implemented")
-        return []
+        try:
+            stmt = select(TableSmoBatch).where(
+                and_(
+                    TableSmoBatch.status_operation.is_(True),
+                    TableSmoBatch.status_manufacturing.is_(False),
+                )
+            )
+            result = self.db.execute(stmt)
+            batches = result.scalars().all()
+
+            logger.info(f"Found {len(batches)} failed batches")
+            return list(batches)
+
+        except Exception as e:
+            logger.error(f"Error getting failed batches: {e}")
+            return []
 
     def get_history(
         self,

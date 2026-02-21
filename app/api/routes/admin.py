@@ -13,6 +13,8 @@ from app.db.session import get_db
 from app.services.mo_history_service import get_mo_history_service
 from app.models.tablesmo_batch import TableSmoBatch
 from app.services.odoo_consumption_service import get_consumption_service
+from app.services.plc_write_service import get_plc_write_service
+from app.services.plc_handshake_service import get_handshake_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -370,17 +372,19 @@ async def retry_push_to_odoo(
         )
         
         if result.get("success"):
-            # Move to history and delete from batch
+            # Archive + delete atomically in one transaction
             history_service = get_mo_history_service(db)
-            history = history_service.move_to_history(batch, status="completed")
-            
-            if history:
-                if history_service.delete_from_batch(batch):
-                    return {
-                        "status": "success",
-                        "message": f"Successfully pushed MO {mo_id} to Odoo and archived",
-                        "data": result,
-                    }
+            archived = history_service.archive_batch(
+                batch,
+                status="completed",
+                mark_synced=True,
+            )
+            if archived:
+                return {
+                    "status": "success",
+                    "message": f"Successfully pushed MO {mo_id} to Odoo and archived",
+                    "data": result,
+                }
             
             return {
                 "status": "partial_success",
@@ -402,11 +406,13 @@ async def retry_push_to_odoo(
 @router.post("/admin/manual/reset-batch/{mo_id}")
 async def reset_batch_status(
     mo_id: str,
+    push_to_plc: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> Any:
     """
     Manual reset batch status manufacturing ke 0.
     Berguna jika batch perlu diproses ulang di PLC.
+    Set push_to_plc=true untuk paksa tulis ulang status reset ke PLC WRITE area.
     """
     try:
         # Find batch by mo_id
@@ -430,7 +436,52 @@ async def reset_batch_status(
         # batch.actual_weight_quantity_finished_goods = None
         
         db.commit()
-        
+
+        plc_sync_status = "skipped"
+        plc_sync_error: Optional[str] = None
+        if push_to_plc:
+            try:
+                plc_service = get_plc_write_service()
+                handshake = get_handshake_service()
+
+                batch_data: dict[str, Any] = {
+                    "mo_id": batch.mo_id,
+                    "consumption": float(batch.consumption) if batch.consumption is not None else 0.0,
+                    "equipment_id_batch": batch.equipment_id_batch,
+                    "finished_goods": batch.finished_goods,
+                    "status_manufacturing": False,
+                    "status_operation": False,
+                    "actual_weight_quantity_finished_goods": (
+                        float(batch.actual_weight_quantity_finished_goods)
+                        if batch.actual_weight_quantity_finished_goods is not None
+                        else 0.0
+                    ),
+                }
+
+                for letter in "abcdefghijklm":
+                    batch_data[f"silo_{letter}"] = getattr(batch, f"silo_{letter}", None)
+                    batch_data[f"consumption_silo_{letter}"] = getattr(
+                        batch, f"consumption_silo_{letter}", None
+                    )
+
+                plc_service.write_mo_batch_to_plc(
+                    batch_data,
+                    batch_number=batch.batch_no,
+                    skip_handshake_check=True,
+                )
+                # Manual push should still mark WRITE area unread for PLC to consume.
+                handshake.reset_write_area_status()
+                plc_sync_status = "success"
+            except Exception as plc_exc:
+                plc_sync_status = "failed"
+                plc_sync_error = str(plc_exc)
+                logger.error(
+                    "Manual reset DB success but PLC sync failed for MO %s: %s",
+                    mo_id,
+                    plc_exc,
+                    exc_info=True,
+                )
+
         return {
             "status": "success",
             "message": f"Successfully reset status for MO {mo_id}",
@@ -438,6 +489,8 @@ async def reset_batch_status(
                 "mo_id": mo_id,
                 "status_manufacturing": False,
                 "status_operation": False,
+                "plc_sync": plc_sync_status,
+                "plc_sync_error": plc_sync_error,
             },
         }
     
@@ -536,13 +589,20 @@ async def trigger_process_completed_manually() -> Any:
 async def get_failed_to_push_batches(db: Session = Depends(get_db)) -> Any:
     """
     Get list batch yang sudah completed tapi belum berhasil push ke Odoo.
-    Batch-batch ini masih ada di mo_batch table dengan status_manufacturing = 1.
+    Batch-batch ini masih ada di mo_batch table dengan:
+    - status_manufacturing = 1
+    - update_odoo = 0/false
     """
     try:
         # Get completed batches yang masih di mo_batch table
-        stmt = select(TableSmoBatch).where(
-            TableSmoBatch.status_manufacturing.is_(True)
-        ).order_by(TableSmoBatch.batch_no)
+        stmt = (
+            select(TableSmoBatch)
+            .where(
+                TableSmoBatch.status_manufacturing.is_(True),
+                TableSmoBatch.update_odoo.is_(False),
+            )
+            .order_by(TableSmoBatch.batch_no)
+        )
         
         result = db.execute(stmt)
         batches = result.scalars().all()
@@ -571,7 +631,7 @@ async def get_failed_to_push_batches(db: Session = Depends(get_db)) -> Any:
             "status": "success",
             "data": {
                 "total": len(batch_list),
-                "message": "These batches are completed but not yet pushed to Odoo",
+                "message": "These batches are completed and pending Odoo sync (update_odoo=false)",
                 "batches": batch_list,
             },
         }

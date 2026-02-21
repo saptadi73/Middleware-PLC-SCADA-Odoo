@@ -469,7 +469,10 @@ async def monitor_batch_health_task():
     """
     try:
         logger.info("[TASK 4] Batch health monitoring task running...")
-        
+        settings = get_settings()
+        now_utc = datetime.now(timezone.utc)
+        stuck_threshold = timedelta(minutes=settings.batch_stuck_threshold_minutes)
+
         db = SessionLocal()
         try:
             # Get all active batches
@@ -482,13 +485,62 @@ async def monitor_batch_health_task():
             if not active_batches:
                 logger.info("[TASK 4] No active batches to monitor")
                 return
-            
-            # TODO: Add monitoring logic
-            # - Check last_read_from_plc timestamp untuk detect stuck batches
-            # - Check consumption values untuk detect anomalies
-            # - Trigger notifications jika needed
-            
-            logger.info(f"[TASK 4] Monitored {len(active_batches)} active batches")
+
+            stuck_batches = 0
+            warning_batches = 0
+            healthy_batches = 0
+
+            for batch in active_batches:
+                batch_no = batch.batch_no
+                mo_id = batch.mo_id
+                last_read = batch.last_read_from_plc
+                status_operation = bool(batch.status_operation)
+
+                if status_operation:
+                    warning_batches += 1
+                    logger.warning(
+                        "[TASK 4] Batch warning: status_operation=1 while still active "
+                        "(batch_no=%s, mo_id=%s)",
+                        batch_no,
+                        mo_id,
+                    )
+
+                if last_read is None:
+                    warning_batches += 1
+                    logger.warning(
+                        "[TASK 4] Batch has no PLC read timestamp yet "
+                        "(batch_no=%s, mo_id=%s)",
+                        batch_no,
+                        mo_id,
+                    )
+                    continue
+
+                if last_read.tzinfo is None:
+                    last_read = last_read.replace(tzinfo=timezone.utc)
+
+                age = now_utc - last_read
+                if age > stuck_threshold:
+                    stuck_batches += 1
+                    logger.warning(
+                        "[TASK 4] Batch appears stuck (age=%s > threshold=%s) "
+                        "(batch_no=%s, mo_id=%s, last_read=%s)",
+                        age,
+                        stuck_threshold,
+                        batch_no,
+                        mo_id,
+                        last_read.isoformat(),
+                    )
+                else:
+                    healthy_batches += 1
+
+            logger.info(
+                "[TASK 4] Health summary: total=%s healthy=%s stuck=%s warnings=%s threshold=%s",
+                len(active_batches),
+                healthy_batches,
+                stuck_batches,
+                warning_batches,
+                stuck_threshold,
+            )
             
         finally:
             db.close()
