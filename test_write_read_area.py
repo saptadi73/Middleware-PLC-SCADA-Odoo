@@ -1,7 +1,8 @@
 """
-Test Write to READ_DATA_PLC_MAPPING Area (D6001-D6058)
+Test Write to READ_DATA_PLC_MAPPING Area (D6001-D6076)
 Script untuk write data dari mo_batch ke PLC area yang dibaca oleh READ service.
 Tujuan: Simulasi data PLC untuk testing read dan sync functionality.
+Note: Now supports 15 equipment (13 Silos + 2 Liquid Tanks: LQ114-LQ115)
 """
 
 import json
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReadAreaWriter:
-    """Write data to READ_DATA_PLC_MAPPING area (D6001-D6058)"""
+    """Write data to READ_DATA_PLC_MAPPING area (D6001-D6076)"""
 
     def __init__(self):
         self.settings = get_settings()
@@ -162,7 +163,7 @@ class ReadAreaWriter:
 
     def write_batch_data(self, batch: TableSmoBatch) -> Dict[str, Any]:
         """
-        Write mo_batch data to PLC READ area (D6001-D6058).
+        Write mo_batch data to PLC READ area (D6001-D6076).
 
         Args:
             batch: mo_batch record from database
@@ -272,11 +273,11 @@ class ReadAreaWriter:
 def main():
     """Main test function"""
     print("\n" + "=" * 80)
-    print("TEST WRITE TO READ_DATA_PLC_MAPPING AREA (D6001-D6058)")
+    print("TEST WRITE TO READ_DATA_PLC_MAPPING AREA (D6001-D6076)")
     print("=" * 80)
     print("\nThis script will:")
     print("1. Read batch_no=1 from mo_batch table")
-    print("2. Write data to PLC READ area (D6001-D6058)")
+    print("2. Write data to PLC READ area (D6001-D6076)")
     print("3. You can then test read and sync functionality")
     print("\nPrerequisites:")
     print("✓ Database has at least one record (batch_no=1)")

@@ -2,30 +2,26 @@
     "meta": {
         "source_file": "PLC_Mapping_BATCH01_10_UPDATED_DM.xlsx",
         "sheet": "equipment",
-        "total_points": 15,
-        "description": "Equipment/Silos mapping dengan equipment_code (menggantikan odoo_code)"
+        "total_points": 15
     },
     "raw_list": [
         {
             "id": 101,
             "equipment": "SILO A",
             "Product": "PKE PELLET",
-            "equipment_code": "silo101",
-            "scada_tag": "silo_a"
+            "equipment_code": "silo101"
         },
         {
             "id": 102,
             "equipment": "SILO B",
             "Product": "KOPRA",
-            "equipment_code": "silo102",
-            "scada_tag": "silo_b"
+            "equipment_code": "silo102"
         },
         {
             "id": 103,
             "equipment": "SILO C",
             "Product": "POLLARD ANGSA",
-            "equipment_code": "silo103",
-            "scada_tag": "silo_c"
+            "equipment_code": "silo103"
         },
         {
             "id": 104,
@@ -33,15 +29,13 @@
             "Product": "JAGUNG GILING",
             "Alternatif 1": "BKK",
             "Alternatif 2": "CGM",
-            "equipment_code": "silo104",
-            "scada_tag": "silo_d"
+            "equipment_code": "silo104"
         },
         {
             "id": 105,
             "equipment": "SILO E",
             "Product": "CGF",
-            "equipment_code": "silo105",
-            "scada_tag": "silo_e"
+            "equipment_code": "silo105"
         },
         {
             "id": 106,
@@ -49,71 +43,61 @@
             "Product": "ONGGOK",
             "Alternatif 1": "JANGGEL",
             "Alternatif 2": "PKD",
-            "equipment_code": "silo106",
-            "scada_tag": "silo_f"
+            "equipment_code": "silo106"
         },
         {
             "id": 107,
             "equipment": "SILO G",
             "Product": "DDGS JAGUNG",
-            "equipment_code": "silo107",
-            "scada_tag": "silo_g"
+            "equipment_code": "silo107"
         },
         {
             "id": 108,
             "equipment": "SILO H",
             "Product": "AMPOK JAGUNG",
-            "equipment_code": "silo108",
-            "scada_tag": "silo_h"
+            "equipment_code": "silo108"
         },
         {
             "id": 109,
             "equipment": "SILO I",
             "Product": "SAWIT",
-            "equipment_code": "silo109",
-            "scada_tag": "silo_i"
+            "equipment_code": "silo109"
         },
         {
             "id": 110,
             "equipment": "SILO J",
             "Product": "KULIT KOPI",
-            "equipment_code": "silo110",
-            "scada_tag": "silo_j"
+            "equipment_code": "silo110"
         },
         {
             "id": 111,
             "equipment": "SILO K",
             "Product": "KATUL",
-            "equipment_code": "silo111",
-            "scada_tag": "silo_k"
+            "equipment_code": "silo111"
         },
         {
             "id": 112,
             "equipment": "SILO L",
             "Product": "KLENTENG ",
-            "equipment_code": "silo112",
-            "scada_tag": "silo_l"
+            "equipment_code": "silo112"
         },
         {
             "id": 113,
             "equipment": "SILO M",
             "Product": "BSJ",
-            "equipment_code": "silo113",
-            "scada_tag": "silo_m"
+            "equipment_code": "silo113"
         },
         {
             "id": 114,
             "equipment": "LQ114",
             "Product": "TETES",
-            "equipment_code": "lq114",
-            "scada_tag": "lq_tetes"
+            "equipment_code": "lq114"
         },
         {
             "id": 115,
             "equipment": "LQ115",
             "Product": "FML",
-            "equipment_code": "lq115",
-            "scada_tag": "lq_fml"
+            "equipment_code": "lq115"
         }
     ]
 }

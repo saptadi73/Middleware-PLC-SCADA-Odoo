@@ -1,9 +1,10 @@
 No,Informasi,Data Type,length,Sample,scale,DM - Memory,Value
-1,equipment_code,ASCII,16,silo101,,D7710-7717,silo101
-2,INFO,ASCII,16,START_FAILURE,,D7718-7725,START_FAILURE
-3,Year,BCD,4,2026,,D7726,2026
-4,Month,BCD,2,2,,D7727,2
-5,Day,BCD,2,23,,D7728,23
-6,Hour,BCD,2,20,,D7730,20
-7,Minute,BCD,2,22,,D7731,22
-8,Second,BCD,2,35,,D7732,35
+1,equipment_code,ASCII,16,silo101,,D8000-D8007,silo101
+2,INFO,ASCII,16,START_FAILURE,,D8008-D8015,START_FAILURE
+3,Year,BCD,4,2026,,D8016,2026
+4,Month,BCD,2,2,,D8017,2
+5,Day,BCD,2,23,,D8018,23
+6,Hour,BCD,2,20,,D8019,20
+7,Minute,BCD,2,22,,D8020,22
+8,Second,BCD,2,35,,D8021,35
+9,status_read_data,boolean,1,"0=not yet read, 1=have been read",,D8022,0

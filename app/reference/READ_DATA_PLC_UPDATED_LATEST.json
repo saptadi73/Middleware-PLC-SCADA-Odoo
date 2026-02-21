@@ -323,23 +323,23 @@
             "Value": 0.2
         },
         {
-            "No": 33,
+            "No": 31,
             "Informasi": "LQ ID 115",
             "Data Type": "REAL",
             "length": 3,
             "Sample": 115,
             "scale": 1,
-            "DM - Memory": "D6070",
-            "Value": 115
+            "DM - Memory": "D6069",
+            "Value": 114
         },
         {
-            "No": 34,
+            "No": 32,
             "Informasi": "LQ ID 115 Consumption",
             "Data Type": "REAL",
             "length": 2,
             "Sample": 30,
             "scale": 100,
-            "DM - Memory": "D6071-6072",
+            "DM - Memory": "D6069-6070",
             "Value": 0.3
         },
         {
@@ -374,10 +374,9 @@
             "No": 38,
             "Informasi": "status_read_data",
             "Data Type": "boolean",
-            "length": 1,
-            "Sample": "0=not yet read, 1=have been read",
-            "DM - Memory": "D6075",
-            "Value": 0
+            "length": "0=yet 1=have been read",
+            "scale": "D7075",
+            "DM - Memory": "D6075"
         }
     ]
 }

@@ -59,6 +59,14 @@ class TableSmoHistory(Base):
     silo_m = Column(Integer, nullable=False, server_default="113")
     component_silo_m_name = Column(String(64), nullable=True)
     consumption_silo_m = Column(Float, nullable=True)
+    
+    # Liquid tanks (newly added with scada_tag reference)
+    lq114 = Column(Integer, nullable=False, server_default="114")
+    component_lq_tetes_name = Column(String(64), nullable=True)  # scada_tag: lq_tetes
+    consumption_lq_tetes = Column(Float, nullable=True)
+    lq115 = Column(Integer, nullable=False, server_default="115")
+    component_lq_fml_name = Column(String(64), nullable=True)  # scada_tag: lq_fml
+    consumption_lq_fml = Column(Float, nullable=True)
 
     status_manufacturing = Column(Boolean, nullable=False, server_default="false")
     status_operation = Column(Boolean, nullable=False, server_default="false")
@@ -78,6 +86,11 @@ class TableSmoHistory(Base):
     actual_consumption_silo_k = Column(Float, nullable=True)
     actual_consumption_silo_l = Column(Float, nullable=True)
     actual_consumption_silo_m = Column(Float, nullable=True)
+    
+    # Actual consumption for liquid tanks from PLC (read from READ_DATA_PLC_MAPPING)
+    # Following scada_tag naming convention: lq_tetes (LQ114), lq_fml (LQ115)
+    actual_consumption_lq_tetes = Column(Float, nullable=True)
+    actual_consumption_lq_fml = Column(Float, nullable=True)
 
     # Timestamp of last PLC read
     last_read_from_plc = Column(DateTime(timezone=True), nullable=True)

@@ -2,7 +2,7 @@
     "meta": {
         "source_file": "PLC_Mapping_BATCH01_10_UPDATED_DM.xlsx",
         "sheet": "READ",
-        "total_points": 38
+        "total_points": 37
     },
     "raw_list": [
         {
@@ -323,23 +323,23 @@
             "Value": 0.2
         },
         {
-            "No": 33,
+            "No": 31,
             "Informasi": "LQ ID 115",
             "Data Type": "REAL",
             "length": 3,
             "Sample": 115,
             "scale": 1,
-            "DM - Memory": "D6070",
-            "Value": 115
+            "DM - Memory": "D6069",
+            "Value": 114
         },
         {
-            "No": 34,
+            "No": 32,
             "Informasi": "LQ ID 115 Consumption",
             "Data Type": "REAL",
             "length": 2,
             "Sample": 30,
             "scale": 100,
-            "DM - Memory": "D6071-6072",
+            "DM - Memory": "D6069-6070",
             "Value": 0.3
         },
         {
@@ -369,15 +369,6 @@
             "scale": 100,
             "DM - Memory": "D6073-6074",
             "Value": 3000
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "length": 1,
-            "Sample": "0=not yet read, 1=have been read",
-            "DM - Memory": "D6075",
-            "Value": 0
         }
     ]
 }

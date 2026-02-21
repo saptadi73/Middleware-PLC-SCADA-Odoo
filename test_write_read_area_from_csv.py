@@ -1,6 +1,7 @@
 """
-Write PLC READ area (D6001-D6058) from CSV input.
+Write PLC READ area (D6001-D6076) from CSV input.
 CSV file: app/reference/read_data_plc_input.csv
+Supports 15 equipment: 13 Silos (101-113) + 2 Liquid Tanks (114-115)
 """
 
 import csv
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReadAreaCsvWriter:
-    """Write CSV values to PLC READ area (D6001-D6058)."""
+    """Write CSV values to PLC READ area (D6001-D6076)."""
 
     def __init__(self, csv_path: Path):
         self.settings = get_settings()
@@ -191,7 +192,7 @@ def main() -> None:
     print("WRITE PLC READ AREA FROM CSV")
     print("=" * 80)
     print(f"CSV path: {csv_path}")
-    print("This will write values into D6001-D6058 using CSV Value column.")
+    print("This will write values into D6001-D6076 using CSV Value column.")
     print("\nPress Ctrl+C to cancel or Enter to continue...")
     input()
 

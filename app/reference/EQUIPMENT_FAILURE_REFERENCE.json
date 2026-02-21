@@ -15,7 +15,7 @@
             "Data Type": "ASCII",
             "length": 16,
             "Sample": "silo101",
-            "DM - Memory": "D7710-7717"
+            "DM - Memory": "D8000-D8007"
         },
         {
             "No": 2,
@@ -23,7 +23,7 @@
             "Data Type": "ASCII",
             "length": 16,
             "Sample": "START_FAILURE",
-            "DM - Memory": "D7718-7725"
+            "DM - Memory": "D8008-D8015"
         },
         {
             "No": 3,
@@ -31,7 +31,7 @@
             "Data Type": "BCD",
             "length": 4,
             "Sample": 2026,
-            "DM - Memory": "D7726"
+            "DM - Memory": "D8016"
         },
         {
             "No": 4,
@@ -39,7 +39,7 @@
             "Data Type": "BCD",
             "length": 2,
             "Sample": 2,
-            "DM - Memory": "D7727"
+            "DM - Memory": "D8017"
         },
         {
             "No": 5,
@@ -47,7 +47,7 @@
             "Data Type": "BCD",
             "length": 2,
             "Sample": 23,
-            "DM - Memory": "D7728"
+            "DM - Memory": "D8018"
         },
         {
             "No": 6,
@@ -55,7 +55,7 @@
             "Data Type": "BCD",
             "length": 2,
             "Sample": 20,
-            "DM - Memory": "D7730"
+            "DM - Memory": "D8019"
         },
         {
             "No": 7,
@@ -63,7 +63,7 @@
             "Data Type": "BCD",
             "length": 2,
             "Sample": 22,
-            "DM - Memory": "D7731"
+            "DM - Memory": "D8020"
         },
         {
             "No": 8,
@@ -71,21 +71,30 @@
             "Data Type": "BCD",
             "length": 2,
             "Sample": 35,
-            "DM - Memory": "D7732"
+            "DM - Memory": "D8021"
+        },
+        {
+            "No": 9,
+            "Informasi": "status_read_data",
+            "Data Type": "boolean",
+            "length": 1,
+            "Sample": "0=not yet read, 1=have been read",
+            "DM - Memory": "D8022",
+            "Value": 0
         }
     ],
     "mapping_structure": {
         "equipment_code": {
             "field_name": "equipment_code",
             "data_type": "REAL",
-            "plc_address": "D7710-D7717",
+            "plc_address": "D8000-D8007",
             "description": "Kode atau ID peralatan yang mengalami kegagalan",
             "sample_values": ["silo101", "silo102", "motor_pump_01"]
         },
         "failure_info": {
             "field_name": "failure_info",
             "data_type": "ASCII",
-            "plc_address": "D7718-D7725",
+            "plc_address": "D8008-D8015",
             "description": "Informasi detail tentang jenis kegagalan",
             "sample_values": ["START_FAILURE", "SENSOR_ERROR", "MOTOR_FAILURE"]
         },
@@ -96,27 +105,27 @@
             "format": "YYYY-MM-DD HH:MM:SS",
             "year": {
                 "data_type": "BCD",
-                "plc_address": "D7726"
+                "plc_address": "D8016"
             },
             "month": {
                 "data_type": "BCD",
-                "plc_address": "D7727"
+                "plc_address": "D8017"
             },
             "day": {
                 "data_type": "BCD",
-                "plc_address": "D7728"
+                "plc_address": "D8018"
             },
             "hour": {
                 "data_type": "BCD",
-                "plc_address": "D7730"
+                "plc_address": "D8019"
             },
             "minute": {
                 "data_type": "BCD",
-                "plc_address": "D7731"
+                "plc_address": "D8020"
             },
             "second": {
                 "data_type": "BCD",
-                "plc_address": "D7732"
+                "plc_address": "D8021"
             }
         }
     },

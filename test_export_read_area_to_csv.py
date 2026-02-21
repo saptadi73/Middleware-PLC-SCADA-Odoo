@@ -1,6 +1,7 @@
 """
-Export PLC READ area (D6001-D6058) to CSV.
+Export PLC READ area (D6001-D6076) to CSV.
 Output file: app/reference/read_data_plc_input.csv
+Supports 15 equipment: 13 Silos (101-113) + 2 Liquid Tanks (114-115)
 """
 
 import csv

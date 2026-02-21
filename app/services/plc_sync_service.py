@@ -2,6 +2,7 @@
 PLC Sync Service - Periodic read and update of mo_batch from PLC data
 Reads data from PLC and updates mo_batch records based on MO_ID.
 Only updates if values have changed to avoid unnecessary database operations.
+Includes handshake logic to mark data as read after successful sync.
 """
 
 import asyncio
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.tablesmo_batch import TableSmoBatch
 from app.services.plc_read_service import get_plc_read_service
+from app.services.plc_handshake_service import get_handshake_service
 from app.services.odoo_consumption_service import (
     get_consumption_service,
 )
@@ -76,6 +78,11 @@ class PLCSyncService:
                 if updated:
                     session.commit()
                     logger.info(f"Updated mo_batch for MO_ID: {mo_id}")
+                    
+                    # Mark READ area as read after successful sync
+                    handshake = get_handshake_service()
+                    handshake.mark_read_area_as_read()  # Set D6075 = 1
+                    
                     return {
                         "success": True,
                         "updated": True,
@@ -83,6 +90,10 @@ class PLCSyncService:
                         "message": "Batch data updated successfully",
                     }
                 else:
+                    # Even if no changes, still mark as read (we processed it)
+                    handshake = get_handshake_service()
+                    handshake.mark_read_area_as_read()  # Set D6075 = 1
+                    
                     return {
                         "success": True,
                         "updated": False,

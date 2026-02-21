@@ -1,8 +1,9 @@
 """
 Write PLC READ area from Odoo MO list.
 
-Use this script to simulate PLC READ memory (D6001-D6069) without editing
+Use this script to simulate PLC READ memory (D6001-D6076) without editing
 app/reference/read_data_plc_input.csv manually.
+Supports 15 equipment: 13 Silos (101-113) + 2 Liquid Tanks (114-115)
 """
 
 import argparse

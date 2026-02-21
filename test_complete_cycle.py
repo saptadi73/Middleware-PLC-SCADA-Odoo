@@ -174,7 +174,7 @@ def test_complete_cycle():
     print("=" * 80)
     print("\n✅ Complete cycle tested successfully!")
     print("\nFlow verified:")
-    print("  1. ✓ Data written to PLC READ area (D6001-D6058)")
+    print("  1. ✓ Data written to PLC READ area (D6001-D6076)")
     print("  2. ✓ Data read back from PLC via API")
     print("  3. ✓ Data synced to database (actual_consumption_*)")
     print("  4. ✓ Change detection working (smart update)")

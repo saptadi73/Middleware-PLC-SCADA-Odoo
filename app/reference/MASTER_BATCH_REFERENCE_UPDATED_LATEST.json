@@ -3034,7 +3034,7 @@
             "DM": "D7967-7968"
         },
         {
-            "No": 33,
+            "No": 31,
             "Informasi": "LQ ID 115",
             "Data Type": "REAL",
             "Sample": 115,
@@ -3042,7 +3042,7 @@
             "DM": "D7969"
         },
         {
-            "No": 34,
+            "No": 32,
             "Informasi": "LQ ID 115 Consumption",
             "Data Type": "REAL",
             "Sample": 20,

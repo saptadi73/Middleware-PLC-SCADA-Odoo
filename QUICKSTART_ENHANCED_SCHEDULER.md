@@ -131,12 +131,14 @@ curl -X POST http://localhost:8000/api/admin/manual/retry-push-odoo/WH/MO/00001
          ↓
 3. mo_batch table populated (10 batches max)
          ↓
-4. PLC WRITE → Send to PLC memory (D7000-D7418)
+4. PLC WRITE → Send to PLC memory (D7000-D7076)
+         ↓  (Handshake: Check D7076=1 before write)
          ↓
 5. PLC PROCESSING → Manufacturing in progress
          ↓
 6. TASK 2 → Read PLC (every 5 min)
          ↓  (Update actual consumption & status)
+         ↓  (Handshake: Mark D6075=1 after read)
          ↓  (Protection: skip if status_manufacturing = 1)
          ↓
 7. PLC sets status_manufacturing = 1 (done)

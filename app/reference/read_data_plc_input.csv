@@ -29,6 +29,11 @@ No,Informasi,Data Type,length,Sample,scale,DM - Memory,Value
 28,SILO ID 112 Consumption,REAL,5,30,100,D6061-6062,0.30
 29,SILO ID 113,REAL,5,113,1,D6063,113
 30,SILO ID 113 Consumption,REAL,5,4458,100,D6064-6065,44.58
-35,status manufaturing,boolean,1,"0=start,1=finished",,D6066,0
-36,Status Operation,boolean,1,"0=run, 1=failed",,D6067,1
-37,weight_finished_good,REAL,5,300000,100,D6068-6069,3000.00
+31,LQ ID 114,REAL,3,114,1,D6066,114
+32,LQ ID 114 Consumption,REAL,2,20,100,D6067-6068,0.2
+33,LQ ID 115,REAL,3,115,1,D6070,115
+34,LQ ID 115 Consumption,REAL,2,30,100,D6071-6072,0.3
+35,status manufaturing,boolean,1,"0=start,1=finished",,D6073,1
+36,Status Operation,boolean,1,"0=run, 1=failed",,D6074,0
+37,weight_finished_good,REAL,5,300000,100,D6075-6076,3000.00
+38,status_read_data,boolean,1,"0=not yet read, 1=have been read",,D6077,0

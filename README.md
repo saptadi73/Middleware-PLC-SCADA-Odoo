@@ -9,14 +9,24 @@ Middleware untuk integrasi SCADA PLC (Omron SYMAC CJ2M CPU31) dengan Odoo 14 men
   - **Write**: Send MO data ke PLC menggunakan FINS/UDP protocol
   - **Read**: Ambil actual consumption dan status dari PLC
   - **Sync**: Update database dengan data real-time dari PLC
+- **PLC Handshake Protocol**: 
+  - **Bidirectional handshaking** menggunakan status_read_data flags
+  - Mencegah data overwrite antara Middleware dan PLC
+  - Auto-marking setelah read operations
+  - Write protection dengan status check
+- **Equipment Support**:
+  - 13 Silos (ID 101-113)
+  - 2 Liquid Tanks (LQ114 - TETES, LQ115 - FML)
+  - Equipment failure monitoring
 - **Data Protection**: Manufacturing orders yang sudah selesai (status_manufacturing = 1) dilindungi dari overwrite
 - **Cancel Batch Management**: Cancel dan archive batch yang gagal atau tidak jadi diproses (no retry needed)
 - **Memory Mapping**: 
-  - MASTER_BATCH_REFERENCE.json untuk write operations (D7000-D7418)
-  - READ_DATA_PLC_MAPPING.json untuk read operations (D6001-D6058)
+  - MASTER_BATCH_REFERENCE.json untuk write operations (D7000-D7076 + status_read_data)
+  - READ_DATA_PLC_MAPPING.json untuk read operations (D6001-D6077 with handshake)
+  - EQUIPMENT_FAILURE_REFERENCE.json untuk failure monitoring (D8000-D8022)
 - **Smart Update**: Change detection - hanya update jika data berubah dan manufacturing masih in-progress
 - **JSON-RPC Client**: Komunikasi dengan Odoo menggunakan XML-RPC over JSON
-- **Database Storage**: PostgreSQL dengan tracking actual consumption per silo
+- **Database Storage**: PostgreSQL dengan tracking actual consumption per silo dan liquid tanks
 - **RESTful API**: FastAPI endpoints untuk CRUD operations
 
 ## 📋 Prerequisites
@@ -196,7 +206,57 @@ Response:
 }
 ```
 
-## � PLC Read API Usage
+## 🤝 PLC Handshake Protocol
+
+Middleware menggunakan **status_read_data** flags untuk handshaking dengan PLC, mencegah data overwrite dan memastikan sinkronisasi data yang benar.
+
+### Memory Addresses
+
+| Area | Data Range | Status Flag | Purpose |
+|------|-----------|-------------|---------|
+| **READ** | D6001-D6074 | **D6075** | Middleware marks production data as read |
+| **WRITE** | D7000-D7075 | **D7076** | PLC marks batch recipe as read |
+| **FAILURE** | D8000-D8021 | **D8022** | Middleware marks equipment failure as read |
+
+### Handshake Flow
+
+**READ Area (Production Data):**
+```
+1. PLC writes production data → D6001-D6074
+2. PLC sets D6075 = 0 (ready for Middleware)
+3. Middleware reads data → auto-sets D6075 = 1
+4. PLC sees D6075=1 → knows data processed
+5. PLC resets D6075=0 for next cycle
+```
+
+**WRITE Area (Batch Recipe):**
+```
+1. Middleware checks D7076 before writing
+2. If D7076=0: SKIP WRITE (PLC busy) → Error
+3. If D7076=1: Write batch → D7000-D7075
+4. Middleware sets D7076=0 after write
+5. PLC reads batch → sets D7076=1 when done
+```
+
+**Equipment Failure:**
+```
+1. PLC writes failure → D8000-D8021
+2. Middleware reads → auto-sets D8022=1
+3. PLC sees D8022=1 → failure logged
+4. PLC resets D8022=0 for next failure
+```
+
+### Test Handshake
+
+```bash
+python test_handshake.py
+```
+
+**Documentation:**
+- [Handshake Implementation Summary](HANDSHAKE_IMPLEMENTATION_SUMMARY.md)
+- [Handshake Quick Reference](HANDSHAKE_QUICK_REF.md)
+
+## 📖 PLC Read API Usage
 
 ### 1. Read Single Field
 
@@ -361,7 +421,7 @@ PLC Sync Service membaca data dari PLC dan update database berdasarkan MO_ID.
 - ... hingga `actual_consumption_silo_m` (D6051)
 
 **Status & Weight:**
-- `actual_weight_quantity_finished_goods` - weight_finished_good (D6058)
+- `actual_weight_quantity_finished_goods` - weight_finished_good (D6073-6074)
 - `status_manufacturing` - status manufaturing (D6056)
 - `status_operation` - Status Operation (D6057)
 
@@ -424,42 +484,60 @@ curl -X POST http://localhost:8000/api/plc/sync-from-plc
 ```
 ## 🗺️ PLC Memory Areas
 
-Sistem menggunakan dua area memory PLC yang berbeda:
+Sistem menggunakan tiga area memory PLC yang berbeda:
 
-### **WRITE Area (D7000-D7418)** - Production Commands
+### **WRITE Area (D7000-D7076)** - Production Commands
 - **Purpose**: Send manufacturing orders dari Middleware → PLC
 - **Mapping**: MASTER_BATCH_REFERENCE.json
-- **Batches**: 30 slots (BATCH01-BATCH30)
-- **Fields per Batch**: 37 fields (MO, product, silos, status)
+- **Batches**: 1 active batch (current production)
+- **Fields per Batch**: 75 fields (MO, product, silos, status)
+- **Handshake**: D7076 (PLC → Middleware, ready flag)
 - **Use Case**: Write MO dari Odoo/Database ke PLC untuk production
 
-### **READ Area (D6001-D6058)** - Production Feedback
+### **READ Area (D6001-D6077)** - Production Feedback
 - **Purpose**: Read actual data dari PLC → Middleware
 - **Mapping**: READ_DATA_PLC_MAPPING.json
-- **Fields**: 37 fields (current MO, actual consumption, status)
+- **Fields**: 76 fields (current MO, actual consumption, status, 15 equipment)
+- **Handshake**: D6075 (Middleware → PLC, data read flag)
 - **Use Case**: Monitor production progress, actual consumption, equipment status
+
+### **EQUIPMENT FAILURE Area (D8000-D8022)** - Failure Detection
+- **Purpose**: Read equipment failure codes dari PLC → Middleware
+- **Mapping**: EQUIPMENT_FAILURE_REFERENCE.json
+- **Fields**: 23 fields (15 equipment failure codes + metadata)
+- **Handshake**: D8022 (Middleware → PLC, failure read flag)
+- **Use Case**: Monitor equipment failures, sync to Odoo
 
 ### **Memory Addressing**
 ```
 ┌─────────────────────────────────────────────────┐
-│  D6001-D6058  │ READ Area (Current Production)  │
-│               │ - Actual consumption            │
+│  D6001-D6077  │ READ Area (Current Production)  │
+│               │ - Actual consumption (15 equip)  │
 │               │ - Real-time status              │
 │               │ - Weight finished goods         │
+│               │ - D6075: Handshake flag        │
 ├───────────────┴─────────────────────────────────┤
 │                                                  │
-│  D7000-D7418  │ WRITE Area (30 Batch Slots)    │
-│               │ - MO queue                      │
-│               │ - Planned consumption           │
-│               │ - Production parameters         │
+│  D7000-D7076  │ WRITE Area (Active Batch)      │
+│               │ - MO data                      │
+│               │ - Planned consumption          │
+│               │ - Production parameters        │
+│               │ - D7076: Handshake flag        │
+├───────────────┴─────────────────────────────────┤
+│                                                  │
+│  D8000-D8022  │ EQUIPMENT FAILURE Area         │
+│               │ - Equipment failure codes      │
+│               │ - Failure metadata             │
+│               │ - D8022: Handshake flag        │
 └──────────────────────────────────────────────────┘
 ```
 
 **Workflow:**
-1. **WRITE**: Middleware send MO → D7000-D7418 (queue of 30 batches)
-2. **PLC Process**: PLC execute production, update D6001-D6058
-3. **READ**: Middleware read D6001-D6058 → actual consumption
+1. **WRITE**: Middleware send MO → D7000-D7076 (check D7076=1 first)
+2. **PLC Process**: PLC execute production, update D6001-D6077
+3. **READ**: Middleware read D6001-D6077 → actual consumption, mark D6075=1
 4. **SYNC**: Update database dengan actual values
+5. **FAILURE**: Read D8000-D8022 for equipment failures, mark D8022=1
 ## �📚 MASTER_BATCH_REFERENCE.json
 
 Memory mapping reference untuk PLC communication:
@@ -486,10 +564,11 @@ Memory mapping reference untuk PLC communication:
 ```
 
 **Structure:**
-- **30 Batches**: BATCH01 - BATCH30
-- **37 Fields per Batch**: BATCH, NO-MO, NO-BoM, finished_goods, quantity, 13 silos, status
+- **1 Active Batch**: Current production batch
+- **75 Fields per Batch**: BATCH, NO-MO, NO-BoM, finished_goods, quantity, 15 equipment (13 silos + 2 liquid tanks), status, handshake
 - **Data Types**: REAL, ASCII, boolean
 - **Addressing**: Single (D7000) or Range (D7001-7008)
+- **Handshake**: D7076 (PLC ready flag)
 
 ## 📖 READ_DATA_PLC_MAPPING.json
 
@@ -498,8 +577,8 @@ Memory mapping reference untuk PLC read operations:
 ```json
 {
   "meta": {
-    "total_points": 37,
-    "address_range": "D6001-D6058"
+    "total_points": 76,
+    "address_range": "D6001-D6077"
   },
   "raw_list": [
     {
@@ -522,12 +601,13 @@ Memory mapping reference untuk PLC read operations:
 ```
 
 **Structure:**
-- **37 Fields**: NO-MO, finished_goods, quantity, 13 silos (ID + consumption), status
-- **Address Range**: D6001 - D6058
+- **76 Fields**: NO-MO, finished_goods, quantity, 15 equipment (ID + consumption for 13 silos + 2 liquid tanks), status, handshake
+- **Address Range**: D6001 - D6077
 - **Data Types**: ASCII, REAL (with scale factor), boolean
 - **Scale Factors**: 
   - Consumption: 100.0 (nilai PLC 82500 = 825.0 kg)
   - Quantity: 1.0 (no scaling)
+- **Handshake**: D6075 (data read flag)
 
 **Field Mapping:**
 - D6001-6008: NO-MO (ASCII, 16 chars)
@@ -536,7 +616,8 @@ Memory mapping reference untuk PLC read operations:
 - D6027, D6029, D6031, ..., D6051: Silo Consumptions (REAL, scale=100.0)
 - D6056: status manufaturing (boolean)
 - D6057: Status Operation (boolean)
-- D6058: weight_finished_good (REAL, scale=1.0)
+- D6073-6074: weight_finished_good (REAL, scale=100.0)
+- D6075: status_read_data (handshake flag)
 
 ## 🧪 Testing
 
@@ -600,7 +681,7 @@ Fitur PLC Sync:
 
 ### Write to READ Area (Testing Helper)
 
-Script khusus untuk simulasi data PLC pada READ area (D6001-D6058):
+Script khusus untuk simulasi data PLC pada READ area (D6001-D6077):
 
 ```bash
 python test_write_read_area.py
@@ -608,7 +689,7 @@ python test_write_read_area.py
 
 Workflow:
 1. ✓ Read batch_no=1 dari database
-2. ✓ Write data ke PLC READ area (D6001-D6058)
+2. ✅ Write data ke PLC READ area (D6001-D6077)
 3. ✓ Menggunakan mapping dari READ_DATA_PLC_MAPPING.json
 
 **Use Case:**

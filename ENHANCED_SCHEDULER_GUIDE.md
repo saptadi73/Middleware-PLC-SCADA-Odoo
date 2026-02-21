@@ -450,16 +450,18 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/plc
 └────────────────────────┬─────────────────────────────────────────┘
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ 3. PLC: Write MO data to PLC memory (D7000-D7418)               │
+│ 3. PLC: Write MO data to PLC memory (D7000-D7076)               │
 │    - Manual or via /plc/write-mo-batch/{mo_id}                  │
+│    - Handshake: Check D7076=1 before write (PLC ready)          │
 │    - PLC receives and starts processing                          │
 └────────────────────────┬─────────────────────────────────────────┘
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │ 4. TASK 2: Read PLC memory (every 5 min)                        │
-│    - Read area D6001-D6058                                       │
+│    - Read area D6001-D6077 (includes LQ114, LQ115 tanks)        │
 │    - Update mo_batch with actual consumption                     │
 │    - Update status_manufacturing, status_operation               │
+│    - Handshake: Mark D6075=1 after reading (data read)          │
 │    - Skip if status_manufacturing already = 1                    │
 └────────────────────────┬─────────────────────────────────────────┘
                          ▼

@@ -1,6 +1,7 @@
 """
 PLC Write Service
 Menggunakan MASTER_BATCH_REFERENCE.json sebagai mapping memory PLC.
+Includes handshake logic to prevent overwriting unread data.
 """
 import json
 import logging
@@ -14,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from app.core.config import get_settings
 from app.services.fins_client import FinsUdpClient
 from app.services.fins_frames import build_memory_write_frame, parse_memory_write_response
+from app.services.plc_handshake_service import get_handshake_service
 
 logger = logging.getLogger(__name__)
 
@@ -235,15 +237,22 @@ class PLCWriteService:
         
         logger.info(f"Written {field_name} to DM {address}: {words} (value={value})")
     
-    def write_batch(self, batch_name: str, data: Dict[str, Any]) -> None:
+    def write_batch(self, batch_name: str, data: Dict[str, Any], skip_handshake_check: bool = False) -> None:
         """
         Write multiple fields ke PLC untuk satu batch mengikuti MASTER_BATCH_REFERENCE.json.
         
         Args:
             batch_name: Nama batch (e.g., "BATCH01")
             data: Dictionary dengan key=field_name, value=data
+            skip_handshake_check: If True, skip checking status_read_data (for testing only)
         
         Field names HARUS match dengan "Informasi" field di MASTER_BATCH_REFERENCE.json
+        
+        Handshake Logic:
+            - Before writing, checks D7076 (status_read_data for WRITE area)
+            - If D7076 = 0: PLC hasn't read previous batch yet, SKIP write to prevent overwrite
+            - If D7076 = 1: PLC has read, safe to write new batch
+            - After writing, D7076 is automatically set to 0 by Middleware
         
         Example:
             write_batch("BATCH01", {
@@ -259,6 +268,23 @@ class PLCWriteService:
         """
         if batch_name not in self.mapping:
             raise ValueError(f"Batch {batch_name} not found in MASTER_BATCH_REFERENCE mapping")
+        
+        # Handshake check: Verify PLC has read previous batch
+        if not skip_handshake_check:
+            handshake = get_handshake_service()
+            plc_has_read = handshake.check_write_area_status()
+            
+            if not plc_has_read:
+                logger.warning(
+                    f"[{batch_name}] Handshake check failed: PLC hasn't read previous batch yet (D7076=0). "
+                    f"Skipping write to prevent data overwrite. PLC will set D7076=1 when ready."
+                )
+                raise RuntimeError(
+                    f"Cannot write {batch_name}: PLC handshake not ready (D7076=0). "
+                    f"Wait for PLC to read current batch first."
+                )
+            
+            logger.info(f"[{batch_name}] Handshake check passed: PLC ready for new batch (D7076=1)")
         
         success_count = 0
         error_count = 0
@@ -293,6 +319,13 @@ class PLCWriteService:
                     exc_info=True
                 )
                 error_count += 1
+        
+        # After successful write, reset handshake flag to 0
+        # (indicating Middleware has written new data, PLC should read it)
+        if not skip_handshake_check and error_count == 0:
+            handshake = get_handshake_service()
+            handshake.reset_write_area_status()  # Set D7076 = 0
+            logger.info(f"[{batch_name}] Reset handshake flag (D7076=0) - waiting for PLC to read")
         
         logger.info(
             f"[{batch_name}] Write completed: "

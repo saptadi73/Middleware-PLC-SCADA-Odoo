@@ -298,13 +298,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7074-7075"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7076"
         }
     ],
     "BATCH02": [
@@ -606,13 +599,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7174-7175"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7176"
         }
     ],
     "BATCH03": [
@@ -914,13 +900,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7274-7275"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7276"
         }
     ],
     "BATCH04": [
@@ -1222,13 +1201,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7374-7375"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7376"
         }
     ],
     "BATCH05": [
@@ -1530,13 +1502,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7474-7475"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7476"
         }
     ],
     "BATCH06": [
@@ -1838,13 +1803,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7574-7575"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7576"
         }
     ],
     "BATCH07": [
@@ -2146,13 +2104,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7674-7675"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7676"
         }
     ],
     "BATCH08": [
@@ -2454,13 +2405,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7774-7775"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7776"
         }
     ],
     "BATCH09": [
@@ -2762,13 +2706,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7874-7875"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7876"
         }
     ],
     "BATCH10": [
@@ -3034,7 +2971,7 @@
             "DM": "D7967-7968"
         },
         {
-            "No": 33,
+            "No": 31,
             "Informasi": "LQ ID 115",
             "Data Type": "REAL",
             "Sample": 115,
@@ -3042,7 +2979,7 @@
             "DM": "D7969"
         },
         {
-            "No": 34,
+            "No": 32,
             "Informasi": "LQ ID 115 Consumption",
             "Data Type": "REAL",
             "Sample": 20,
@@ -3070,13 +3007,6 @@
             "Sample": 2000000,
             "scale": 100,
             "DM": "D7974-7975"
-        },
-        {
-            "No": 38,
-            "Informasi": "status_read_data",
-            "Data Type": "boolean",
-            "Sample": "0=yet 1=have been read",
-            "DM": "D7976"
         }
     ]
 }

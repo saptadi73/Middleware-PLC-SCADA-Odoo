@@ -62,20 +62,22 @@ class OdooConsumptionService:
 
             with open(reference_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                mapping_list = data.get("silo_mapping", [])
+                # Load dari raw_list (actual structure dari silo_data.json)
+                mapping_list = data.get("raw_list", [])
                 for item in mapping_list:
                     silo_id = item.get("id")
                     if silo_id:
                         self._silo_mapping[silo_id] = {
-                            "odoo_code": item.get("odoo_code", ""),
-                            "scada_tag": item.get("scada_tag", ""),
+                            "equipment_code": item.get("equipment_code", ""),
+                            "scada_tag": item.get("scada_tag"),
                         }
 
             logger.info(
-                f"Loaded silo mapping: {len(self._silo_mapping)} silos"
+                f"Loaded equipment mapping: {len(self._silo_mapping)} items "
+                f"(silos + liquid tanks)"
             )
         except Exception as e:
-            logger.error(f"Error loading silo mapping: {e}")
+            logger.error(f"Error loading equipment mapping: {e}")
 
     def _log_odoo_response(
         self, endpoint: str, response: httpx.Response
@@ -147,7 +149,7 @@ class OdooConsumptionService:
             logger.error(f"Authentication error: {e}")
             return None
 
-    async def update_consumption_with_odoo_codes(
+    async def update_consumption_with_equipment_codes(
         self,
         mo_id: str,
         consumption_data: Dict[str, float],
@@ -168,7 +170,7 @@ class OdooConsumptionService:
 
         Args:
             mo_id: Manufacturing Order ID (e.g., "WH/MO/00001")
-            consumption_data: Dict dengan format {odoo_code: quantity, ...}
+            consumption_data: Dict dengan format {equipment_code: quantity, ...}
                             Contoh: {"silo101": 825, "silo102": 600}
                             OR {scada_tag: quantity} - auto convert
             quantity: Optional jumlah product quantity untuk update MO
@@ -195,10 +197,10 @@ class OdooConsumptionService:
             # Convert consumption data ke Odoo format jika perlu
             # (jika input pakai scada_tag silo_a, convert ke silo101)
             converted_data: Dict[str, float] = {}
-            valid_odoo_codes = {
-                data.get("odoo_code")
+            valid_equipment_codes = {
+                data.get("equipment_code")
                 for data in self._silo_mapping.values()
-                if data.get("odoo_code")
+                if data.get("equipment_code")
             }
             for key, qty in consumption_data.items():
                 try:
@@ -213,17 +215,17 @@ class OdooConsumptionService:
                     logger.debug(f"Skipping {key}: quantity <= 0")
                     continue
 
-                # Check jika key sudah valid odoo_code (silo101..silo113)
-                if key in valid_odoo_codes:
+                # Check jika key sudah valid equipment_code (silo101..silo115)
+                if key in valid_equipment_codes:
                     converted_data[key] = qty_value
                 else:
-                    # Convert dari scada_tag (silo_a) ke odoo_code (silo101)
-                    odoo_code = self._convert_scada_tag_to_odoo_code(key)
-                    if odoo_code:
-                        converted_data[odoo_code] = qty_value
+                    # Convert dari scada_tag (silo_a) ke equipment_code (silo101)
+                    equipment_code = self._convert_scada_tag_to_equipment_code(key)
+                    if equipment_code:
+                        converted_data[equipment_code] = qty_value
                     else:
                         logger.warning(
-                            f"Cannot convert {key} to odoo_code, skipping"
+                            f"Cannot convert {key} to equipment_code, skipping"
                         )
 
             if not converted_data:
@@ -339,33 +341,33 @@ class OdooConsumptionService:
         finally:
             await client.aclose()
 
-    def _convert_scada_tag_to_odoo_code(self, scada_tag: str) -> Optional[str]:
+    def _convert_scada_tag_to_equipment_code(self, scada_tag: str) -> Optional[str]:
         """
-        Convert SCADA tag (silo_a) ke Odoo code (silo101).
+        Convert SCADA tag (silo_a) ke equipment code (silo101).
 
         Args:
             scada_tag: SCADA tag (e.g., "silo_a")
 
         Returns:
-            Odoo code (e.g., "silo101") atau None jika tidak found
+            Equipment code (e.g., "silo101") atau None jika tidak found
         """
         for silo_data in self._silo_mapping.values():
             if silo_data.get("scada_tag") == scada_tag:
-                return silo_data.get("odoo_code")
+                return silo_data.get("equipment_code")
         return None
 
-    def _convert_odoo_code_to_scada_tag(self, odoo_code: str) -> Optional[str]:
+    def _convert_equipment_code_to_scada_tag(self, equipment_code: str) -> Optional[str]:
         """
-        Convert Odoo code (silo101) ke SCADA tag (silo_a).
+        Convert equipment code (silo101) ke SCADA tag (silo_a).
 
         Args:
-            odoo_code: Odoo code (e.g., "silo101")
+            equipment_code: Equipment code (e.g., "silo101")
 
         Returns:
-            SCADA tag (e.g., "silo_a") atau None jika tidak found
+            SCADA tag (e.g., "silo_a") atau None jika tidak found atau LQ tank
         """
         for silo_data in self._silo_mapping.values():
-            if silo_data.get("odoo_code") == odoo_code:
+            if silo_data.get("equipment_code") == equipment_code:
                 return silo_data.get("scada_tag")
         return None
 
@@ -382,7 +384,7 @@ class OdooConsumptionService:
 
         Args:
             mo_id: Manufacturing Order ID
-            consumption_data: Dict {odoo_code: quantity, ...}
+            consumption_data: Dict {equipment_code: quantity, ...}
                             Contoh: {"silo101": 825.5, "silo102": 600.3}
 
         Returns:
@@ -415,12 +417,15 @@ class OdooConsumptionService:
                 )
                 return False
 
-            # Convert odoo_code back to SCADA tag dan update fields
-            # Contoh: silo101 → silo_a → consumption_silo_a
-            for odoo_code, quantity in consumption_data.items():
-                scada_tag = self._convert_odoo_code_to_scada_tag(odoo_code)
+            # Convert equipment_code back to SCADA tag dan update fields
+            # Silos: silo101 → silo_a → actual_consumption_silo_a
+            # Liquid tanks: lq114 → lq_tetes → actual_consumption_lq_tetes
+            #              lq115 → lq_fml → actual_consumption_lq_fml
+            for equipment_code, quantity in consumption_data.items():
+                scada_tag = self._convert_equipment_code_to_scada_tag(equipment_code)
                 if scada_tag:
-                    # Build field name: silo_a → consumption_silo_a
+                    # Build field name: silo_a → actual_consumption_silo_a
+                    #                   lq_tetes → actual_consumption_lq_tetes
                     field_name = f"actual_consumption_{scada_tag}"
                     if hasattr(mo_batch, field_name):
                         setattr(mo_batch, field_name, float(quantity))
@@ -431,6 +436,11 @@ class OdooConsumptionService:
                         logger.warning(
                             f"Field {field_name} not found in mo_batch"
                         )
+                else:
+                    logger.debug(
+                        f"Equipment {equipment_code} has no SCADA tag, "
+                        f"skipping SCADA-based save"
+                    )
 
             # Update last read timestamp
             mo_batch.last_read_from_plc = datetime.now(timezone.utc)  # type: ignore
@@ -464,7 +474,7 @@ class OdooConsumptionService:
         It makes SEPARATE API calls to Odoo's /api/scada/material-consumption endpoint
         for each material component using product_id parameter.
 
-        For automated batch processing, use update_consumption_with_odoo_codes() instead,
+        For automated batch processing, use update_consumption_with_equipment_codes() instead,
         which is more efficient and uses a single API call.
 
         Use this method for:
@@ -741,7 +751,7 @@ class OdooConsumptionService:
         """
         try:
             # Extract consumption data from batch
-            # Convert SCADA tags (silo_a, silo_b) → Odoo codes (silo101, silo102)
+            # Convert SCADA tags (silo_a, silo_b) → equipment codes (silo101, silo102)
             consumption_entries: Dict[str, float] = {}
             
             for letter in "abcdefghijklm":
@@ -752,12 +762,12 @@ class OdooConsumptionService:
                     consumption_value = batch_data[consumption_key]
                     if consumption_value and consumption_value > 0:
                         # Convert silo_a → silo101, etc
-                        odoo_code = self._convert_scada_tag_to_odoo_code(silo_tag)
-                        if odoo_code:
-                            consumption_entries[odoo_code] = float(consumption_value)
+                        equipment_code = self._convert_scada_tag_to_equipment_code(silo_tag)
+                        if equipment_code:
+                            consumption_entries[equipment_code] = float(consumption_value)
                         else:
                             logger.warning(
-                                f"Cannot convert {silo_tag} to odoo_code, skipping"
+                                f"Cannot convert {silo_tag} to equipment_code, skipping"
                             )
 
             logger.info(
@@ -786,7 +796,7 @@ class OdooConsumptionService:
                 
                 update_result[
                     "consumption_details"
-                ] = await self.update_consumption_with_odoo_codes(
+                ] = await self.update_consumption_with_equipment_codes(
                     mo_id=mo_id,
                     consumption_data=consumption_entries,
                     quantity=quantity,

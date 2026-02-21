@@ -1,0 +1,81 @@
+{
+    "meta": {
+        "source_file": "PLC_Mapping_BATCH01_10_UPDATED_DM.xlsx",
+        "sheet": "failure",
+        "total_points": 8
+    },
+    "raw_list": [
+        {
+            "No": 1,
+            "Informasi": "equipment_code",
+            "Data Type": "ASCII",
+            "Length": 16,
+            "Sample": "silo101",
+            "DM - Memory": "D7710-7717",
+            "Description": "Kode atau ID peralatan yang mengalami kegagalan"
+        },
+        {
+            "No": 2,
+            "Informasi": "INFO",
+            "Data Type": "ASCII",
+            "Length": 16,
+            "Sample": "START_FAILURE",
+            "DM - Memory": "D7718-7725",
+            "Description": "Informasi detail tentang jenis kegagalan"
+        },
+        {
+            "No": 3,
+            "Informasi": "Year",
+            "Data Type": "BCD",
+            "Length": 4,
+            "Sample": 2026,
+            "DM - Memory": "D7726",
+            "Description": "Tahun kejadian"
+        },
+        {
+            "No": 4,
+            "Informasi": "Month",
+            "Data Type": "BCD",
+            "Length": 2,
+            "Sample": 2,
+            "DM - Memory": "D7727",
+            "Description": "Bulan kejadian"
+        },
+        {
+            "No": 5,
+            "Informasi": "Day",
+            "Data Type": "BCD",
+            "Length": 2,
+            "Sample": 23,
+            "DM - Memory": "D7728",
+            "Description": "Hari kejadian"
+        },
+        {
+            "No": 6,
+            "Informasi": "Hour",
+            "Data Type": "BCD",
+            "Length": 2,
+            "Sample": 20,
+            "DM - Memory": "D7730",
+            "Description": "Jam kejadian"
+        },
+        {
+            "No": 7,
+            "Informasi": "Minute",
+            "Data Type": "BCD",
+            "Length": 2,
+            "Sample": 22,
+            "DM - Memory": "D7731",
+            "Description": "Menit kejadian"
+        },
+        {
+            "No": 8,
+            "Informasi": "Second",
+            "Data Type": "BCD",
+            "Length": 2,
+            "Sample": 35,
+            "DM - Memory": "D7732",
+            "Description": "Detik kejadian"
+        }
+    ]
+}

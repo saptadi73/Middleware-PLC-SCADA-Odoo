@@ -1,6 +1,7 @@
 """
 PLC Equipment Failure Service
 Membaca data equipment failure dari PLC menggunakan EQUIPMENT_FAILURE_REFERENCE.json sebagai mapping.
+Includes handshake logic to mark failure data as read after successful read.
 """
 import json
 import logging
@@ -16,6 +17,7 @@ from app.services.fins_frames import (
     build_memory_read_frame,
     parse_memory_read_response,
 )
+from app.services.plc_handshake_service import get_handshake_service
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +246,11 @@ class PLCEquipmentFailureService:
             }
             
             logger.info(f"✓ Successfully read equipment failure data: {equipment_failure_data['equipment_code']}")
+            
+            # Mark equipment failure area as read after successful read
+            handshake = get_handshake_service()
+            handshake.mark_equipment_failure_as_read()  # Set D8022 = 1
+            
             return equipment_failure_data
         
         except Exception as e:
