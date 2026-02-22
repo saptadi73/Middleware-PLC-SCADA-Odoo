@@ -1,8 +1,8 @@
-Konsep task adalah sebagai berikut :
+﻿Konsep task adalah sebagai berikut :
 
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 SYSTEM OVERVIEW - UPDATED 2025-02-21
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 EQUIPMENT COVERAGE:
 - Total: 15 Equipment Items
@@ -10,18 +10,34 @@ EQUIPMENT COVERAGE:
   - 2 Liquid Tanks: LQ114 (TETES/Molasses), LQ115 (FML/Fermented Molasses)
 
 MEMORY ARCHITECTURE:
-- READ Area: D6001-D6077 (production feedback + handshake D6075)
-- WRITE Area: D7000-D7076 (batch commands + handshake D7076)
+- READ Area: D6000-D6977 (10 Batch READ areas - BATCH_READ_01 to BATCH_READ_10 + handshake per-batch status_read_data D6076, D6176, ..., D6976)
+  * BATCH_READ_01: D6000-D6077
+  * BATCH_READ_02: D6100-D6177
+  * BATCH_READ_03: D6200-D6277
+  * BATCH_READ_04: D6300-D6377
+  * BATCH_READ_05: D6400-D6477
+  * BATCH_READ_06: D6500-D6577
+  * BATCH_READ_07: D6600-D6677
+  * BATCH_READ_08: D6700-D6777
+  * BATCH_READ_09: D6800-D6877
+  * BATCH_READ_10: D6900-D6977
+- WRITE Area: D7000-D7976 (10 Batch WRITE areas + handshake D7076)
 - Equipment Failure: D8000-D8022 (failure detection + handshake D8022)
+- Manual Material Weighing: D9000-D9011 (TASK 5 - manual consumption entry + handshake D9011) [NEW 2025-02-22]
+  * D9000: BATCH (lot number, REAL)
+  * D9001-D9008: NO-MO (Manufacturing Order ID, ASCII 16 chars / 8 words)
+  * D9009: NO-Product (Product Template ID, REAL)
+  * D9010: Consumption (Material qty with scale=100, REAL)
+  * D9011: status_manual_weigh_read (handshake flag, BOOLEAN)
 
 COMMUNICATION PROTOCOL:
 - FINS UDP Protocol (Omron PLC)
 - Bidirectional Handshaking (prevent data overwrite)
 - Status flags: status_read_data untuk sinkronisasi
 
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-TASK 1: ✓ IMPLEMENTED WITH PLC WRITE + HANDSHAKING
+TASK 1: âœ“ IMPLEMENTED WITH PLC WRITE + HANDSHAKING
 Get list MO from Odoo untuk mendapatkan data MO yang sudah confirm, kemudian update ke table mo_batch. Proses ini akan dilakukan secara periodik, misalnya setiap 5 menit sekali, untuk memastikan data MO yang masuk ke PLC selalu up-to-date.
 
 Alur:
@@ -35,14 +51,14 @@ Alur:
    - Syarat: table mo_batch kosong
    - Insert: mo_id, equipment, finished_goods, consumption targets, dll
 
-4. WRITE ke PLC Memory ✓ [IMPLEMENTED 2025-02-15, UPDATED 2025-02-21]
+4. WRITE ke PLC Memory âœ“ [IMPLEMENTED 2025-02-15, UPDATED 2025-02-21]
    - Menggunakan FINS Protocol (UDP)
-   - Memory Area: D7000-D7076 (1 active batch)
+   - Memory Area: D7000-D7976 (10 batch WRITE areas)
    - PLC akan membaca batch data dan execute sesuai HMI/program
    - Data lengkap: MO ID, equipment (15 items), consumption targets, dll
    - Equipment: 13 Silos (A-M) + 2 Liquid Tanks (LQ114, LQ115)
 
-5. HANDSHAKE CHECK ✓ [IMPLEMENTED 2025-02-21]
+5. HANDSHAKE CHECK âœ“ [IMPLEMENTED 2025-02-21]
    - Sebelum write: Check D7076 (status_read_data WRITE area)
    - Jika D7076 = 0: PLC belum baca data sebelumnya, SKIP write (avoid overwrite)
    - Jika D7076 = 1: PLC sudah baca, SAFE to write batch baru
@@ -52,65 +68,102 @@ Alur:
 Interval: 5 menit (atau ketika queue kosong)
 
 
-TASK 2: ✓ IMPLEMENTED (Read PLC + Update DB + Sync Odoo + Handshaking)
+TASK 2: âœ“ UPDATED 2025-02-22 (Read 10 Batch PLC + Update DB + Sync Odoo + Handshaking)
 Proses baca PLC memory area READ secara periodik, misalnya setiap 5 menit sekali (configurable), untuk mendapatkan data status_manufacturing dan actual dari setiap batch yang sedang diproses di PLC.
 
+PERUBAHAN [2025-02-22]:
+- Sebelumnya: TASK 2 hanya membaca 1 BATCH (D6001-D6077)
+- Sekarang: TASK 2 membaca 10 BATCH (D6000-D6977) - sama seperti WRITE
+- Alasan: Mencegah overlapping waktu di PLC saat update BATCH01-10. Jika hanya 1 BATCH memory 
+  di READ menyebabkan bottleneck dan konflikt timing pada PLC saat update 10 batch secara bersamaan.
+- Solusi: Setiap batch WRITE memiliki memory READ yang dedicated, sehingga PLC dan Middleware 
+  dapat bekerja secara parallel tanpa konflik.
+
 Alur:
-1. FIFO dieksekusi oleh PLC. PLC menentukan batch mana yang sedang diproses dan mengisi hasilnya di memory.
+1. FIFO dieksekusi oleh PLC. PLC menentukan batch mana yang sedang diproses dan mengisi hasilnya di memory READ yang sesuai.
 
-2. Read PLC memory untuk batch yang sedang diproses PLC
-   - Memory Area: D6001-D6077 (READ area)
-   - Mendapat: actual consumption per equipment (15 items), actual weight, status flags
+2. Read PLC memory untuk 10 Batch yang sedang diproses PLC
+   - Memory Area: D6000-D6977 (10 READ areas - BATCH_READ_01 hingga BATCH_READ_10)
+   - Setiap batch memiliki memory area dedicated:
+     * D6000-D6077 untuk BATCH_READ_01
+     * D6100-D6177 untuk BATCH_READ_02
+     * ... dst hingga D6900-D6977 untuk BATCH_READ_10
+   - Mendapat: actual consumption per equipment (15 items), actual weight, status flags untuk setiap batch
 
-3. Cek apakah ada perubahan data dari (last update) di mo_batch
+3. Untuk setiap batch yang sedah dibaca:
+   - Cek apakah ada perubahan data dari (last update) di mo_batch
    - Syarat update: data consumption berubah DAN status_manufacturing != 1
    - Jika tidak ada perubahan: skip update
 
-4. PLC berulang terus update memory dengan actual values sesuai mo_id yang sedang diproses
+4. PLC berulang terus update memory dengan actual values sesuai mo_id yang sedang diproses di masing-masing batch memory
 
-5. Ketika PLC selesai (status_manufacturing=1):
+5. Ketika sebuah batch selesai (status_manufacturing=1):
    - TASK 2 melakukan update akhir kali ke mo_batch
    - Set status_manufacturing=1 di table mo_batch
 
-6. HANDSHAKE MARK ✓ [IMPLEMENTED 2025-02-21]
-   - Setelah berhasil read data: Middleware set D6075 = 1 (mark as read)
-   - PLC akan lihat D6075=1 dan tahu data sudah dibaca Middleware
-   - PLC akan reset D6075 = 0 ketika siap untuk cycle berikutnya
-   - Mechanism: Bidirectional handshaking Middleware ↔ PLC
+6. EAGER SYNC KE ODOO âœ“ [UPDATED 2025-02-22]
+   - **Perubahan**: TASK 2 sekarang langsung sync ke Odoo saat batch selesai (tidak menunggu TASK 3)
+   - Setelah set status_manufacturing=1, check apakah batch sudah update_odoo=0
+   - Jika TRUE (belum sync ke Odoo):
+     * POST consumption data ke Odoo API
+     * Endpoint: /api/scada/mo/update-with-consumptions
+     * Data includes: mo_id, actual consumption, actual weight, equipment_id
+   - Jika Odoo sync sukses:
+     * Set update_odoo=1 di mo_batch table (mark sebagai sudah sync)
+     * **Penting**: Set update_odoo=1 di DB; verifikasi PLC gunakan status_read_data per-batch (D6076, D6176, ..., D6976) sesuai mapping
+   - Jika Odoo sync gagal:
+     * Log error, tetap keep batched di mo_batch dengan update_odoo=0
+     * TASK 3 akan retry sync kemudian
 
-7. Pada cycle berikutnya:
+7. HANDSHAKE MARK âœ“ [UPDATED 2025-02-22]
+   - Setelah berhasil read data batch tertentu: Middleware set status_read_data batch tersebut = 1 (contoh: BATCH_READ_01 -> D6076, BATCH_READ_02 -> D6176, ... BATCH_READ_10 -> D6976)
+   - PLC akan lihat flag status_read_data per-batch =1 dan tahu data batch tersebut sudah dibaca Middleware
+   - PLC akan reset flag per-batch ke 0 ketika siap untuk cycle berikutnya
+   - Mechanism: Bidirectional handshaking Middleware â†” PLC
+
+8. Pada cycle berikutnya:
    - TASK 2 tidak lagi update batch dengan status_manufacturing=1
    - Fokus ke batch berikutnya (jika ada dalam queue)
 
 Interval: 5 menit (configurable dari .env)
 
 
-TASK 3: ✓ IMPLEMENTED (Archive & Sync Odoo)
-Membaca table MO-Batch secara periodik untuk mendapatkan data yang sudah selesai (status_manufacturing=1 dan update_odoo=FALSE).
+TASK 3: âœ“ UPDATED 2025-02-22 (Archive & Retry Failed Sync)
+Membaca table MO-Batch secara periodik untuk cleanup batch yang sudah selesai dan handle retry untuk sync yang gagal.
+
+**PERUBAHAN [2025-02-22]**:
+- Sebelumnya: TASK 3 handle Odoo sync + archive
+- Sekarang: TASK 3 handle archive saja + retry untuk failed sync (eager sync dipindah ke TASK 2)
+- Alasan: Lebih efficient - saat batch selesai langsung sync ke Odoo tanpa menunggu interval Task 3
 
 Alur:
-1. Query mo_batch WHERE status_manufacturing=1 AND update_odoo=0/False
+1. Query mo_batch dengan dua kondisi:
+   a) WHERE status_manufacturing=1 AND update_odoo=1 (sudah sync Odoo, siap archive)
+   b) WHERE status_manufacturing=1 AND update_odoo=0 AND retry_count < MAX_RETRY (sync gagal, perlu retry)
 
-2. Untuk setiap batch selesai:
-   - POST consumption data ke Odoo API
-   - Endpoint: /api/scada/mo/update-with-consumptions
-   - Data includes: mo_id, actual consumption, actual weight, equipment_id
-
-3. Jika Odoo sync sukses:
-   - Update mo_batch SET update_odoo=1 / TRUE (menandakan sukses sync ke Odoo)
+2. Untuk batch yang sudah sync ke Odoo (update_odoo=1):
    - Move batch ke table mo_histories (archive)
    - DELETE batch dari table mo_batch (clear queue)
 
-4. Jika Odoo sync gagal:
-   - DO NOT DELETE batch
-   - Batch tetap di mo_batch dan akan di-retry Task 3 lagi
-   - Safety: Jangan hapus sampai Odoo confirm terima
+3. Untuk batch yang sync Odoo gagal (update_odoo=0):
+   - Retry POST consumption data ke Odoo API
+   - Endpoint: /api/scada/mo/update-with-consumptions
+   - Increment retry_count
+   - Jika retry sukses:
+     * Set update_odoo=1
+     * Batch akan di-archive di cycle task 3 berikutnya
+   - Jika retry gagal lagi:
+     * Keep batch di mo_batch
+     * Log error untuk investigation (jangan infinite retry)
+     * Check MAX_RETRY threshold (misal: 5 kali)
+
+4. Safety: Jangan hapus batch sampai Odoo confirm terima (update_odoo=1)
 
 Interval: 3 menit (lebih sering dari Task 1, untuk queue clearance)
 
 
 TASK 4 (LEGACY - Now integrated to Task 3):
-Dulunya digunakan untuk move mo_batch → mo_histories.
+Dulunya digunakan untuk move mo_batch â†’ mo_histories.
 Sekarang sudah integrated ke TASK 3 (move + delete dilakukan atomic saat Odoo sync sukses).
 
 Jika masih ada orphan records (update_odoo=1 tapi belum di-archive):
@@ -121,7 +174,122 @@ Jika masih ada orphan records (update_odoo=1 tapi belum di-archive):
 (Opsional jika perlu cleanup manual)
 
 
-EQUIPMENT FAILURE MONITORING: ✓ IMPLEMENTED (Read Equipment Failure + Sync Odoo + Handshaking)
+TASK 5: âœ“ READY FOR IMPLEMENTATION (Read Manual Material Weighing + Sync Odoo + Handshaking) [NEW 2025-02-22]
+Proses baca data penimbangan material manual dari PLC secara periodik untuk mendapatkan data konsumsi material 
+yang diinput oleh operator di weigh scale station, kemudian sync consumption data ke Odoo real-time.
+
+**PERUNTUKAN**:
+- Weigh Scale Station: Operator memasukkan data penimbangan material ke PLC via HMI
+- Data meliputi: MO ID, Product ID, Actual Consumption Quantity
+- Hasil: Material consumption entries dibuat di Odoo otomatis
+
+**MEMORY AREA** [ALLOCATED 2025-02-22]:
+- Area: D9000-D9011 (allocated untuk TASK 5, TERPISAH dari Equipment Failure D8000-D8022)
+- D9000: BATCH (lot number, REAL scale=1)
+- D9001-D9008: NO-MO (Manufacturing Order ID, ASCII 16 chars, 8 words)
+- D9009: NO-Product (Product Template ID, REAL scale=1)
+- D9010: Consumption (Material consumption quantity, REAL scale=100)
+- D9011: status_manual_weigh_read (handshake flag for TASK 5, BOOLEAN)
+
+**ALUR**:
+1. Read PLC Manual Weighing Memory Area
+   - Memory Area: D9000-D9010
+   - Data: BATCH, MO ID, Product ID, Consumption Quantity
+
+2. Validasi Data
+   - Check apakah D9011 (handshake flag) = 0 (data baru belum dibaca)
+   - Validasi MO ID: apakah MO exist di Odoo?
+   - Validasi Product ID: apakah product exist?
+   - Validasi Consumption: quantity > 0?
+
+3. Data Processing
+   - Extract consumption dari D9010, divide by 100 (scale factor)
+   - Parse MO ID dari D9001-D9008 (ASCII area)
+   - Lookup product_tmpl_id dari D9009
+
+4. Sync ke Odoo (Real-time)
+   - Endpoint: /api/scada/material-consumption
+   - Method: POST
+   - Payload:
+     {
+       "mo_id": "WH/MO/00002",
+       "product_tmpl_id": 23,
+       "quantity": 8.25,  # actual consumption quantity (D9010 / 100)
+       "equipment_id": "WEIGH_SCALE_01",
+       "timestamp": "2025-02-22T10:30:00"
+     }
+   - Atau gunakan endpoint alternative:
+     POST /api/scada/mo/update-with-consumptions
+     {
+       "mo_id": "WH/MO/00002",
+       "weigh_scale_01": 8.25,  # equipment_code: quantity (D9010 / 100)
+       ...
+     }
+
+5. Mark Handshake âœ“
+   - Setelah successful sync ke Odoo: Set D9011 = 1 (mark as read)
+   - PLC akan lihat D9011=1 dan tahu data sudah diproses Middleware
+   - PLC akan reset D9011 = 0 ketika ada penimbangan baru dari operator
+
+6. Error Handling
+   - Jika MO tidak valid: Log error, jangan sync ke Odoo, tetap keep D9011=0 (retry)
+   - Jika Product tidak valid: Log error, jangan sync ke Odoo, tetap keep D9011=0 (retry)
+   - Jika Odoo sync gagal: Log error, jangan set D9011=1, Middleware akan retry berikutnya
+
+7. Pada Cycle Berikutnya
+   - Jika D9011=0 (new data): Proses seperti step 1-6
+   - Jika D9011=1 (already processed): SKIP (waiting untuk PLC reset)
+
+**DATABASE LOG**:
+- Table: scada_equipment_material (log setiap entry untuk audit trail)
+- Fields: id, weigh_station_code, mo_id, product_id, consumption_qty, timestamp, sync_status, errors
+
+**FLOW DIAGRAM**:
+```
+PLC HMI Input â†’ D9000-D9010 (manual weighing data)
+               â†“
+        TASK 5 Scheduler (polling every 2 minutes)
+               â†“
+        Check D9011=0? (new data flag)
+               â†“
+        Validate MO, Product, Quantity
+               â†“
+        POST to Odoo API (/api/scada/material-consumption)
+               â†“
+        Sync Success? 
+        â”œâ”€ YES â†’ Set D9011=1 (mark as read) â†’ Log entry to scada_equipment_material
+        â””â”€ NO  â†’ Keep D9011=0, Log error, Retry next cycle
+               â†“
+        PLC sees D9011=1, resets D9011=0 when new weigh entry comes
+```
+
+**IMPLEMENTATION CHECKLIST**:
+- [ ] Create plc_manual_weighing_service.py
+  - read_manual_weighing_data() â†’ dict
+  - validate_weighing_data() â†’ bool
+  - sync_to_odoo() â†’ bool
+  - mark_handshake() â†’ bool
+  
+- [ ] Update plc_handshake_service.py
+  - Add mark_manual_weighing_as_read(D9011) method
+  
+- [ ] Create scheduler task in scheduler.py
+  - Task name: read_manual_weighing_task or task_manual_material_consumption
+  - Interval: 2 minutes (configurable from .env)
+  - Calls: plc_manual_weighing_service.read_and_sync()
+  
+- [ ] Create database table if needed: scada_equipment_material (audit log)
+  
+- [ ] Create test script: test_manual_weighing.py
+  
+- [ ] Update API integration documentation
+  
+- [ ] Add logging for audit trail
+
+Interval: 2 menit (atau saat ada new weigh entry di PLC)
+
+
+EQUIPMENT FAILURE MONITORING: âœ“ IMPLEMENTED (Read Equipment Failure + Sync Odoo + Handshaking)
 Proses monitoring equipment failure dari PLC secara periodik untuk mendeteksi kegagalan equipment dan sync ke Odoo.
 
 Alur:
@@ -139,18 +307,18 @@ Alur:
    - Data: equipment_code, failure_code, timestamp
    - Create/Update equipment failure record di Odoo
 
-4. HANDSHAKE MARK ✓ [IMPLEMENTED 2025-02-21]
+4. HANDSHAKE MARK âœ“ [IMPLEMENTED 2025-02-21]
    - Setelah berhasil read failure data: Middleware set D8022 = 1 (mark as read)
    - PLC akan lihat D8022=1 dan tahu failure sudah dibaca Middleware
    - PLC akan reset D8022 = 0 ketika siap untuk report failure berikutnya
-   - Mechanism: Bidirectional handshaking Middleware ↔ PLC
+   - Mechanism: Bidirectional handshaking Middleware â†” PLC
 
 Interval: Configurable (biasanya lebih sering, misalnya 1-2 menit)
 
 
-═══════════════════════════════════════════════════════════════════════════════
-HANDSHAKING SERVICE: ✓ IMPLEMENTED 2025-02-21
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+HANDSHAKING SERVICE: âœ“ IMPLEMENTED 2025-02-21
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 Service: app/services/plc_handshake_service.py
 Purpose: Manage bidirectional handshaking between Middleware and PLC using status_read_data flags
@@ -160,15 +328,15 @@ OVERVIEW:
 Handshaking mechanism mencegah data overwrite dan memastikan sinkronisasi data antara 
 Middleware dan PLC. Menggunakan 3 memory address untuk 3 area yang berbeda:
 
-1. READ AREA HANDSHAKING (D6075)
-   Direction: Middleware → PLC
-   - Middleware read production data dari D6001-D6074
-   - Middleware set D6075 = 1 (mark as read)
-   - PLC lihat D6075=1, tahu data sudah dibaca
-   - PLC reset D6075 = 0 ketika siap untuk cycle berikutnya
+1. READ AREA HANDSHAKING (PER-BATCH status_read_data: D6076, D6176, ..., D6976)
+   Direction: Middleware â†’ PLC
+   - Middleware read production data dari masing-masing area batch (contoh BATCH_READ_01: D6000-D6075)
+   - Middleware set status_read_data batch terkait = 1 (contoh BATCH_READ_01: D6076)
+   - PLC lihat status_read_data batch terkait =1, tahu data sudah dibaca
+   - PLC reset status_read_data batch terkait =0 ketika siap untuk cycle berikutnya
 
 2. WRITE AREA HANDSHAKING (D7076)
-   Direction: PLC → Middleware
+   Direction: PLC â†’ Middleware
    - Middleware check D7076 sebelum write batch baru
    - Jika D7076 = 0: PLC belum baca, SKIP write (prevent overwrite)
    - Jika D7076 = 1: PLC sudah baca, SAFE to write
@@ -177,7 +345,7 @@ Middleware dan PLC. Menggunakan 3 memory address untuk 3 area yang berbeda:
    - PLC set D7076 = 1 setelah selesai baca batch
 
 3. EQUIPMENT FAILURE HANDSHAKING (D8022)
-   Direction: Middleware → PLC
+   Direction: Middleware â†’ PLC
    - Middleware read failure data dari D8000-D8021
    - Middleware set D8022 = 1 (mark as read)
    - PLC lihat D8022=1, tahu failure sudah dibaca
@@ -185,26 +353,26 @@ Middleware dan PLC. Menggunakan 3 memory address untuk 3 area yang berbeda:
 
 SERVICE METHODS:
 ----------------
-1. check_write_area_status() → bool
+1. check_write_area_status() â†’ bool
    - Check D7076 untuk tahu apakah safe untuk write
    - Return True jika D7076=1 (PLC ready)
    - Return False jika D7076=0 (PLC busy)
 
-2. mark_read_area_as_read() → bool
-   - Set D6075 = 1 setelah read production data
+2. mark_read_area_as_read(batch_no) -> bool
+   - Set status_read_data per-batch = 1 setelah read production data batch tersebut
    - Dipanggil oleh plc_sync_service.py
 
-3. mark_equipment_failure_as_read() → bool
+3. mark_equipment_failure_as_read() â†’ bool
    - Set D8022 = 1 setelah read failure data
    - Dipanggil oleh plc_equipment_failure_service.py
 
-4. reset_read_area_status() → bool
-   - Set D6075 = 0 (testing/manual reset)
+4. reset_read_area_status(batch_no) -> bool
+   - Set status_read_data per-batch = 0 (testing/manual reset)
 
-5. reset_write_area_status() → bool
+5. reset_write_area_status() â†’ bool
    - Set D7076 = 1 (testing/manual reset - simulate PLC ready)
 
-6. reset_equipment_failure_status() → bool
+6. reset_equipment_failure_status() â†’ bool
    - Set D8022 = 0 (testing/manual reset)
 
 INTEGRATION DENGAN SERVICES:
@@ -216,7 +384,7 @@ INTEGRATION DENGAN SERVICES:
 
 2. plc_sync_service.py
    - Method: plc_sync_to_db()
-   - Logic: Mark D6075=1 setelah successful read & sync
+   - Logic: Mark status_read_data per-batch=1 setelah successful read & sync
 
 3. plc_equipment_failure_service.py
    - Method: read_equipment_failure()
@@ -229,19 +397,19 @@ Purpose: Test semua handshaking functionality
 
 Tests:
 1. READ Area Test
-   - Reset D6075 → 0
-   - Mark as read → D6075 = 1
+   - Reset status_read_data batch terkait -> 0
+   - Mark as read -> status_read_data batch terkait = 1
    - Verify flag changed
 
 2. WRITE Area Test
-   - Set D7076 → 1 (simulate PLC ready)
-   - Check safe to write → True
-   - Reset after write → D7076 = 0
+   - Set D7076 â†’ 1 (simulate PLC ready)
+   - Check safe to write â†’ True
+   - Reset after write â†’ D7076 = 0
    - Verify flag changed
 
 3. Equipment Failure Test
-   - Reset D8022 → 0
-   - Mark as read → D8022 = 1
+   - Reset D8022 â†’ 0
+   - Mark as read â†’ D8022 = 1
    - Verify flag changed
 
 Running Test:
@@ -251,16 +419,16 @@ python test_handshake.py
 
 BENEFITS:
 ---------
-✓ Prevent data overwrite (PLC tidak overwrite data yang belum dibaca Middleware)
-✓ Prevent write collision (Middleware tidak overwrite data yang belum dibaca PLC)
-✓ Data synchronization guarantee (kedua belah pihak tahu kapan data sudah diproses)
-✓ Fault tolerance (jika salah satu pihak stuck, handshake akan detect)
-✓ Production safety (critical untuk manufacturing process)
+âœ“ Prevent data overwrite (PLC tidak overwrite data yang belum dibaca Middleware)
+âœ“ Prevent write collision (Middleware tidak overwrite data yang belum dibaca PLC)
+âœ“ Data synchronization guarantee (kedua belah pihak tahu kapan data sudah diproses)
+âœ“ Fault tolerance (jika salah satu pihak stuck, handshake akan detect)
+âœ“ Production safety (critical untuk manufacturing process)
 
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-TERMINOLOGY & NAMING CONVENTIONS: ✓ UPDATED 2025-02-21
-═══════════════════════════════════════════════════════════════════════════════
+TERMINOLOGY & NAMING CONVENTIONS: âœ“ UPDATED 2025-02-21
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 EQUIPMENT CODE:
 ---------------
@@ -273,9 +441,9 @@ Equipment code format:
 - Liquid Tanks: 114-115 (2 items)
 
 Mapping to scada_tags:
-- 101 → silo_a, 102 → silo_b, ..., 113 → silo_m
-- 114 → lq_tetes (TETES/Molasses)
-- 115 → lq_fml (FML/Fermented Molasses Liquid)
+- 101 â†’ silo_a, 102 â†’ silo_b, ..., 113 â†’ silo_m
+- 114 â†’ lq_tetes (TETES/Molasses)
+- 115 â†’ lq_fml (FML/Fermented Molasses Liquid)
 
 DATABASE FIELDS:
 ----------------
@@ -288,41 +456,74 @@ Table: mo_batch
 - status_operation (0=inactive, 1=active)
 - update_odoo (0=pending, 1=synced)
 
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 CHANGELOG
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+[2025-02-22] - NEW TASK 5: MANUAL MATERIAL WEIGHING + MEMORY ALLOCATION UPDATE
+--------------------------------------------------
+âœ“ Created TASK 5 for reading manual material weighing data from PLC
+âœ“ Memory area allocated: D9000-D9011 (SEPARATE from Equipment Failure D8000-D8022)
+âœ“ Flow: Read manual consumption â†’ Validate MO/Product â†’ POST to Odoo API â†’ Mark handshake D9011
+âœ“ Integration: Uses existing /api/scada/material-consumption endpoint
+âœ“ Database: Will log entries to scada_equipment_material audit table
+âœ“ Handshake: Uses D9011 flag for bidirectional sync (follows same pattern as TASK 1-3)
+âœ“ Interval: 2 minutes (configurable)
+âœ“ Updated ADDITIONAL_EQUIPMENT_REFERENCE.json with proper memory allocation (D9000-D9011)
+âœ“ Updated konsep_task.txt with TASK 5 definition, memory architecture, and implementation checklist
+
+[2025-02-22] - TASK 2 UPDATED: 10 BATCH READ + EAGER SYNC ODOO
+--------------------------------------------------
+âœ“ TASK 2 sekarang membaca 10 BATCH READ (D6000-D6977) alih-alih hanya 1 BATCH
+âœ“ Alasan: Mencegah overlapping waktu di PLC saat update BATCH01-10
+âœ“ Memory Architecture: Setiap batch memiliki READ area yang dedicated
+  - BATCH_READ_01: D6000-D6077
+  - BATCH_READ_02: D6100-D6177
+  - ... dst hingga D6900-D6977
+âœ“ **NEW**: TASK 2 sekarang LANGSUNG sync ke Odoo saat batch selesai (status_manufacturing=1)
+  - Tidak perlu menunggu interval TASK 3
+  - Setelah sync Odoo sukses, langsung set update_odoo=1
+  - Lebih efficient dan real-time
+âœ“ TASK 3 berubah fokus: Archive batch yang sudah sync + Retry failed sync
+  - Bukan lagi primary sync handler (itu sekarang TASK 2)
+  - Fokus pada cleanup dan retry logic
+âœ“ Handshaking READ menggunakan status_read_data per-batch (D6076, D6176, ..., D6976)
 
 [2025-02-21] - HANDSHAKING IMPLEMENTATION
 ------------------------------------------
-✓ Added plc_handshake_service.py
-✓ Implemented bidirectional handshaking (D6075, D7076, D8022)
-✓ Updated plc_write_service.py with handshake check
-✓ Updated plc_sync_service.py with handshake mark
-✓ Updated plc_equipment_failure_service.py with handshake mark
-✓ Created test_handshake.py for testing
-✓ Added 2 new equipment: LQ114 (TETES), LQ115 (FML)
-✓ Updated memory ranges: D6001-D6077, D7000-D7076, D8000-D8022
-✓ Changed terminology: odoo_code → equipment_code
-✓ Updated all reference files (READ_DATA_PLC_MAPPING.json, etc.)
-✓ Updated documentation (README.md, TESTING_GUIDE.md, etc.)
+âœ“ Added plc_handshake_service.py
+âœ“ Implemented bidirectional handshaking (READ per-batch status_read_data, D7076, D8022)
+âœ“ Updated plc_write_service.py with handshake check
+âœ“ Updated plc_sync_service.py with handshake mark
+âœ“ Updated plc_equipment_failure_service.py with handshake mark
+âœ“ Created test_handshake.py for testing
+âœ“ Added 2 new equipment: LQ114 (TETES), LQ115 (FML)
+âœ“ Updated memory ranges: READ 10 batch (D6000-D6977, status_read_data per-batch D6076..D6976), WRITE 10 batch (D7000-D7976), Equipment Failure (D8000-D8022)
+âœ“ Changed terminology: odoo_code â†’ equipment_code
+âœ“ Updated all reference files (READ_DATA_PLC_MAPPING.json, etc.)
+âœ“ Updated documentation (README.md, TESTING_GUIDE.md, etc.)
 
 [2025-02-15] - PLC WRITE SERVICE
 ----------------------------------
-✓ Implemented FINS Protocol UDP communication
-✓ Added plc_write_service.py
-✓ Created MASTER_BATCH_REFERENCE.json
-✓ Write MO data to PLC memory D7000-D7418
+âœ“ Implemented FINS Protocol UDP communication
+âœ“ Added plc_write_service.py
+âœ“ Created MASTER_BATCH_REFERENCE.json
+âœ“ Write MO data to PLC memory D7000-D7418
 
 [Previous] - CORE IMPLEMENTATION
 ----------------------------------
-✓ Task 1: Fetch MO from Odoo
-✓ Task 2: Read PLC & Sync Database
-✓ Task 3: Archive & Sync to Odoo
-✓ Equipment Failure Monitoring
-✓ Scheduler with APScheduler
-✓ PostgreSQL + SQLAlchemy ORM
-✓ Alembic migrations
+âœ“ Task 1: Fetch MO from Odoo
+âœ“ Task 2: Read PLC & Sync Database
+âœ“ Task 3: Archive & Sync to Odoo
+âœ“ Equipment Failure Monitoring
+âœ“ Scheduler with APScheduler
+âœ“ PostgreSQL + SQLAlchemy ORM
+âœ“ Alembic migrations
 
-═══════════════════════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+
+
+
 

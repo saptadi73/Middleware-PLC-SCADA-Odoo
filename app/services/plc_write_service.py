@@ -110,19 +110,55 @@ class PLCWriteService:
         
         Args:
             value: Data yang akan di-convert
-            data_type: "REAL", "ASCII", atau "boolean"
+            data_type: "INT", "REAL", "ASCII", atau "BOOLEAN"
             length: Length dari data (untuk ASCII)
-            scale: Scale factor (untuk REAL)
+            scale: Scale factor (untuk REAL, tidak dipakai untuk INT)
             word_count: Expected number of words (for multi-word values)
         
         Returns:
             List of 16-bit integer values
+        
+        Supported Data Types:
+            - BOOLEAN: Convert to 0 or 1 (1 word)
+            - INT: Convert to signed 16-bit integer (1 word) or 32-bit (2 words) based on word_count
+            - REAL: Convert with scale factor to signed integer (1 or 2 words based on word_count)
+            - ASCII: Convert string to words (2 chars per word)
         """
         data_type = data_type.upper()
         
         if data_type == "BOOLEAN":
             # Boolean -> 0 atau 1 dalam 1 word
             return [1 if value else 0]
+        
+        elif data_type == "INT":
+            # INT -> signed integer tanpa scale factor
+            # Convert to integer
+            if isinstance(value, (int, float)):
+                int_value = int(value)  # No scale for INT
+            else:
+                try:
+                    int_value = int(value)
+                except (ValueError, TypeError):
+                    raise ValueError(f"Cannot convert {value} to INT")
+            
+            # Determine if multi-word is needed
+            # If word_count expected is 2+, use 32-bit signed integer (2 words)
+            if word_count and word_count >= 2:
+                # 32-bit signed range: -2147483648 to 2147483647
+                if int_value < -2147483648 or int_value > 2147483647:
+                    raise ValueError(f"Value {int_value} out of 32-bit range")
+                
+                # Split into 2 words (big-endian): high word, low word
+                high_word = (int_value >> 16) & 0xFFFF
+                low_word = int_value & 0xFFFF
+                
+                return [high_word, low_word]
+            else:
+                # Single word (16-bit) - use signed range
+                if int_value < -32768 or int_value > 32767:
+                    raise ValueError(f"Value {int_value} out of 16-bit signed range [-32768, 32767]")
+                
+                return [int_value & 0xFFFF]
         
         elif data_type == "REAL":
             # REAL -> integer dengan scale factor

@@ -193,7 +193,7 @@ async def plc_read_sync_task():
         finally:
             db.close()
         
-        # Read PLC once per cycle
+        # Read PLC (all READ batches) once per cycle
         logger.debug("[TASK 2-DEBUG-4] Initializing PLC sync service...")
         plc_service = get_plc_sync_service()
         
@@ -205,28 +205,50 @@ async def plc_read_sync_task():
             
             if result.get("success"):
                 mo_id = result.get("mo_id")
-                logger.debug(f"[TASK 2-DEBUG-7] PLC sync successful for MO: {mo_id}")
-                
-                if result.get("updated"):
+                processed_batches = int(result.get("processed_batches", 0) or 0)
+                updated_batches = int(result.get("updated_batches", 0) or 0)
+                failed_batches = result.get("failed_batches", []) or []
+                failed_count = len(failed_batches) if isinstance(failed_batches, list) else 0
+
+                logger.debug(
+                    "[TASK 2-DEBUG-7] PLC sync success: first_mo=%s processed=%s updated=%s failed=%s",
+                    mo_id,
+                    processed_batches,
+                    updated_batches,
+                    failed_count,
+                )
+
+                if updated_batches > 0:
                     logger.info(
-                        f"[TASK 2] ? Updated mo_batch for MO: {mo_id} from PLC data"
+                        "[TASK 2] Updated %s batch(es) from PLC (processed=%s, failed=%s)",
+                        updated_batches,
+                        processed_batches,
+                        failed_count,
                     )
-                    logger.debug(f"[TASK 2-DEBUG-8] Update details: {result}")
                 else:
-                    logger.debug(
-                        f"[TASK 2-DEBUG] No changes for MO: {mo_id} (data unchanged)"
+                    logger.info(
+                        "[TASK 2] No DB changes from PLC (processed=%s, failed=%s)",
+                        processed_batches,
+                        failed_count,
                     )
+
+                if failed_count > 0:
+                    logger.warning(
+                        "[TASK 2] %s batch(es) failed during PLC sync. See debug log for details.",
+                        failed_count,
+                    )
+                    logger.debug("[TASK 2-DEBUG-8] Failed batch details: %s", failed_batches)
             else:
                 error = result.get("error", "Unknown error")
-                logger.warning(f"[TASK 2] ? PLC sync failed: {error}")
+                logger.warning(f"[TASK 2] PLC sync failed: {error}")
                 logger.debug(f"[TASK 2-DEBUG-9] Error details: {result}")
                 
         except Exception as e:
-            logger.error(f"[TASK 2] ? Error reading from PLC: {e}", exc_info=True)
+            logger.error(f"[TASK 2] Error reading from PLC: {e}", exc_info=True)
             logger.error(f"[TASK 2-ERROR] Exception type: {type(e).__name__}")
             
     except Exception as exc:
-        logger.exception("[TASK 2] ? ERROR in PLC read sync task: %s", str(exc))
+        logger.exception("[TASK 2] ERROR in PLC read sync task: %s", str(exc))
         logger.error(f"[TASK 2-ERROR] Exception type: {type(exc).__name__}")
 
 

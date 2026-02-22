@@ -62,7 +62,7 @@ class OdooConsumptionService:
 
             with open(reference_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Load dari raw_list (actual structure dari silo_data.json)
+                # Load from current silo_data.json structure.
                 mapping_list = data.get("raw_list", [])
                 for item in mapping_list:
                     silo_id = item.get("id")
@@ -176,7 +176,7 @@ class OdooConsumptionService:
             quantity: Optional jumlah product quantity untuk update MO
 
         Returns:
-            Dict dengan hasil update dari Odoo (single batch response)
+            Dict dengan hasil update dari Odoo (batch update response)
         """
         client = await self._authenticate()
         if not client:

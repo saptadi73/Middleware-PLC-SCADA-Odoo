@@ -5,7 +5,7 @@ import logging
 from decimal import Decimal
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -211,6 +211,7 @@ async def write_mo_batch_to_plc(
 async def get_plc_config() -> Any:
     """Get current PLC configuration."""
     service = get_plc_write_service()
+    read_service = get_plc_read_service()
     
     return {
         "status": "success",
@@ -222,12 +223,17 @@ async def get_plc_config() -> Any:
             "client_node": service.settings.client_node,
             "plc_node": service.settings.plc_node,
             "batches_loaded": len(service.mapping),
+            "read_batches_loaded": len(getattr(read_service, "batch_mappings", {})),
+            "read_fields_per_batch": len(getattr(read_service, "mapping", [])),
         },
     }
 
 
 @router.get("/plc/read-field/{field_name}")
-async def read_field_from_plc(field_name: str) -> Any:
+async def read_field_from_plc(
+    field_name: str,
+    batch_no: int = Query(1, ge=1, le=10, description="READ batch number (1-10)"),
+) -> Any:
     """
     Read single field dari PLC memory.
     
@@ -236,13 +242,14 @@ async def read_field_from_plc(field_name: str) -> Any:
     """
     try:
         service = get_plc_read_service()
-        value = service.read_field(field_name)
+        value = service.read_field(field_name, batch_no=batch_no)
         
         return {
             "status": "success",
             "message": f"Read {field_name} from PLC",
             "data": {
                 "field_name": field_name,
+                "batch_no": batch_no,
                 "value": value,
             },
         }
@@ -255,7 +262,9 @@ async def read_field_from_plc(field_name: str) -> Any:
 
 
 @router.get("/plc/read-all")
-async def read_all_fields_from_plc() -> Any:
+async def read_all_fields_from_plc(
+    batch_no: int = Query(1, ge=1, le=10, description="READ batch number (1-10)"),
+) -> Any:
     """
     Read semua fields dari PLC memory.
     
@@ -263,11 +272,11 @@ async def read_all_fields_from_plc() -> Any:
     """
     try:
         service = get_plc_read_service()
-        data = service.read_all_fields()
+        data = service.read_all_fields(batch_no=batch_no)
         
         return {
             "status": "success",
-            "message": f"Read {len(data)} fields from PLC",
+            "message": f"Read {len(data)} fields from PLC batch {batch_no}",
             "data": data,
         }
     except Exception as exc:
@@ -279,7 +288,9 @@ async def read_all_fields_from_plc() -> Any:
 
 
 @router.get("/plc/read-batch")
-async def read_batch_from_plc() -> Any:
+async def read_batch_from_plc(
+    batch_no: int = Query(1, ge=1, le=10, description="READ batch number (1-10)"),
+) -> Any:
     """
     Read batch data dari PLC dan format sebagai structured data.
     
@@ -287,11 +298,11 @@ async def read_batch_from_plc() -> Any:
     """
     try:
         service = get_plc_read_service()
-        batch_data = service.read_batch_data()
+        batch_data = service.read_batch_data(batch_no=batch_no)
         
         return {
             "status": "success",
-            "message": "Read batch data from PLC",
+            "message": f"Read batch data from PLC batch {batch_no}",
             "data": batch_data,
         }
     except Exception as exc:
@@ -299,6 +310,28 @@ async def read_batch_from_plc() -> Any:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to read batch from PLC: {str(exc)}",
+        ) from exc
+
+
+@router.get("/plc/read-batch-all")
+async def read_all_batches_from_plc() -> Any:
+    """
+    Read all READ batches (BATCH_READ_01..BATCH_READ_10) from PLC.
+    """
+    try:
+        service = get_plc_read_service()
+        all_batches = service.read_all_batches_data()
+
+        return {
+            "status": "success",
+            "message": "Read all batch data from PLC",
+            "data": all_batches,
+        }
+    except Exception as exc:
+        logger.exception("Error reading all batch data from PLC: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read all batches from PLC: {str(exc)}",
         ) from exc
 
 

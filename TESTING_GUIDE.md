@@ -1,8 +1,8 @@
-# PLC Bidirectional Communication Testing Guide
+﻿# PLC Bidirectional Communication Testing Guide
 
 Panduan lengkap untuk testing PLC Read/Write/Sync functionality dengan fokus pada **bidirectional communication** antara Middleware dan PLC.
 
-## 📋 Table of Contents
+## ðŸ“‹ Table of Contents
 
 1. [Overview](#overview)
 2. [Prerequisites](#prerequisites)
@@ -20,31 +20,31 @@ Panduan lengkap untuk testing PLC Read/Write/Sync functionality dengan fokus pad
 Testing bidirectional PLC communication melibatkan 3 komponen utama:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Testing Flow                             │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  1. WRITE TEST                                              │
-│     Database (mo_batch) ──► PLC READ Area (D6001-D6077)    │
-│     Script: test_write_read_area.py                        │
-│                                                             │
-│  2. READ TEST                                               │
-│     PLC READ Area (D6001-D6077) ──► API Response           │
-│     Script: test_plc_read.py                               │
-│                                                             │
-│  3. SYNC TEST                                               │
-│     PLC READ Area (D6001-D6077) ──► Database (mo_batch)    │
-│     Script: test_plc_sync.py                               │
-│                                                             │
-│  4. HANDSHAKE TEST                                          │
-│     Test PLC ↔ Middleware handshaking (status_read_data)   │
-│     Script: test_handshake.py                              │
-│                                                             │
-│  5. COMPLETE CYCLE TEST                                     │
-│     All steps combined with verification                    │
-│     Script: test_complete_cycle.py                         │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    Testing Flow                             â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                                                             â”‚
+â”‚  1. WRITE TEST                                              â”‚
+â”‚     Database (mo_batch) â”€â”€â–º PLC READ Area (D6001-D6077)    â”‚
+â”‚     Script: test_write_read_area.py                        â”‚
+â”‚                                                             â”‚
+â”‚  2. READ TEST                                               â”‚
+â”‚     PLC READ Area (D6001-D6077) â”€â”€â–º API Response           â”‚
+â”‚     Script: test_plc_read.py                               â”‚
+â”‚                                                             â”‚
+â”‚  3. SYNC TEST                                               â”‚
+â”‚     PLC READ Area (D6001-D6077) â”€â”€â–º Database (mo_batch)    â”‚
+â”‚     Script: test_plc_sync.py                               â”‚
+â”‚                                                             â”‚
+â”‚  4. HANDSHAKE TEST                                          â”‚
+â”‚     Test PLC â†” Middleware handshaking (status_read_data)   â”‚
+â”‚     Script: test_handshake.py                              â”‚
+â”‚                                                             â”‚
+â”‚  5. COMPLETE CYCLE TEST                                     â”‚
+â”‚     All steps combined with verification                    â”‚
+â”‚     Script: test_complete_cycle.py                         â”‚
+â”‚                                                             â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -131,38 +131,38 @@ python -m uvicorn app.main:app --reload
 ### PLC Memory Layout
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                     PLC DM Memory                             │
-├───────────────────────────────────────────────────────────────┤
-│                                                               │
-│  D6001-D6077  │ READ AREA (Production Feedback)              │
-│               │ ✓ Current MO being processed                 │
-│               │ ✓ Actual consumption per silo (13 silos)     │
-│               │ ✓ Actual consumption liquid tanks (LQ114/115)│
-│               │ ✓ Real-time status (manufacturing/operation) │
-│               │ ✓ Actual finished goods weight               │
-│               │ ✓ D6075: status_read_data (handshake flag)   │
-│               │ Mapping: READ_DATA_PLC_MAPPING.json          │
-│               │                                              │
-├───────────────┴──────────────────────────────────────────────┤
-│                                                               │
-│  D7000-D7076  │ WRITE AREA (Production Commands)            │
-│               │ ✓ Queue of 10 MO batches (BATCH01-10)       │
-│               │ ✓ Planned consumption (silos + LQ tanks)     │
-│               │ ✓ Production parameters                      │
-│               │ ✓ D7076: status_read_data (handshake flag)   │
-│               │ Mapping: MASTER_BATCH_REFERENCE.json         │
-│               │                                              │
-├───────────────┴──────────────────────────────────────────────┤
-│                                                               │
-│  D8000-D8022  │ EQUIPMENT FAILURE AREA                      │
-│               │ ✓ Equipment code (silo101, lq114, etc)       │
-│               │ ✓ Failure info (START_FAILURE, SENSOR_ERROR) │
-│               │ ✓ Timestamp (Year, Month, Day, H:M:S)        │
-│               │ ✓ D8022: status_read_data (handshake flag)   │
-│               │ Mapping: EQUIPMENT_FAILURE_REFERENCE.json    │
-│               │                                              │
-└───────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                     PLC DM Memory                             â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                                                               â”‚
+â”‚  D6001-D6077  â”‚ READ AREA (Production Feedback)              â”‚
+â”‚               â”‚ âœ“ Current MO being processed                 â”‚
+â”‚               â”‚ âœ“ Actual consumption per silo (13 silos)     â”‚
+â”‚               â”‚ âœ“ Actual consumption liquid tanks (LQ114/115)â”‚
+â”‚               â”‚ âœ“ Real-time status (manufacturing/operation) â”‚
+â”‚               â”‚ âœ“ Actual finished goods weight               â”‚
+â”‚               â”‚ âœ“ status_read_data per-batch: D6076/D6176/.../D6976 (handshake flag)   â”‚
+â”‚               â”‚ Mapping: READ_DATA_PLC_MAPPING.json          â”‚
+â”‚               â”‚                                              â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                                                               â”‚
+â”‚  D7000-D7976  â”‚ WRITE AREA (Production Commands)            â”‚
+â”‚               â”‚ âœ“ Queue of 10 MO batches (BATCH01-10)       â”‚
+â”‚               â”‚ âœ“ Planned consumption (silos + LQ tanks)     â”‚
+â”‚               â”‚ âœ“ Production parameters                      â”‚
+â”‚               â”‚ âœ“ D7076: status_read_data (handshake flag)   â”‚
+â”‚               â”‚ Mapping: MASTER_BATCH_REFERENCE.json         â”‚
+â”‚               â”‚                                              â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                                                               â”‚
+â”‚  D8000-D8022  â”‚ EQUIPMENT FAILURE AREA                      â”‚
+â”‚               â”‚ âœ“ Equipment code (silo101, lq114, etc)       â”‚
+â”‚               â”‚ âœ“ Failure info (START_FAILURE, SENSOR_ERROR) â”‚
+â”‚               â”‚ âœ“ Timestamp (Year, Month, Day, H:M:S)        â”‚
+â”‚               â”‚ âœ“ D8022: status_read_data (handshake flag)   â”‚
+â”‚               â”‚ Mapping: EQUIPMENT_FAILURE_REFERENCE.json    â”‚
+â”‚               â”‚                                              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### Handshake Protocol
@@ -171,16 +171,16 @@ The middleware uses **status_read_data** flags for bidirectional handshaking:
 
 | Flag | Address | Direction | Purpose |
 |------|---------|-----------|---------|
-| READ status | D6075 | MW→PLC | Middleware marks production data as read |
-| WRITE status | D7076 | PLC→MW | PLC marks batch recipe as read |
-| FAILURE status | D8022 | MW→PLC | Middleware marks equipment failure as read |
+| READ status | D6076/D6176/.../D6976 | MWâ†’PLC | Middleware marks production data as read |
+| WRITE status | D7076 | PLCâ†’MW | PLC marks batch recipe as read |
+| FAILURE status | D8022 | MWâ†’PLC | Middleware marks equipment failure as read |
 
 **Flow:**
-- **READ**: PLC writes data → MW reads → MW sets D6075=1 → PLC sees flag → PLC resets to 0
-- **WRITE**: MW checks D7076 → If 1: write batch, set to 0 → PLC reads → PLC sets to 1
-- **FAILURE**: PLC writes failure → MW reads → MW sets D8022=1 → PLC resets to 0
+- **READ**: PLC writes data â†’ MW reads â†’ MW sets status_read_data per-batch=1 â†’ PLC sees flag â†’ PLC resets to 0
+- **WRITE**: MW checks D7076 â†’ If 1: write batch, set to 0 â†’ PLC reads â†’ PLC sets to 1
+- **FAILURE**: PLC writes failure â†’ MW reads â†’ MW sets D8022=1 â†’ PLC resets to 0
 
-### Field Mapping: Database ↔ PLC READ Area
+### Field Mapping: Database â†” PLC READ Area
 
 | Database Field | PLC Field | DM Address | Data Type | Scale |
 |----------------|-----------|------------|-----------|-------|
@@ -201,21 +201,21 @@ The middleware uses **status_read_data** flags for bidirectional handshaking:
 | `status_manufacturing` | status manufaturing | D6056 | boolean | - |
 | `status_operation` | Status Operation | D6057 | boolean | - |
 | `actual_weight_quantity_finished_goods` | weight_finished_good | D6073-6074 | REAL | 100.0 |
-| `status_read_data` | Handshake flag | D6075 | boolean | - |
+| `status_read_data` | Handshake flag (per-batch) | D6076/D6176/.../D6976 | boolean | - |
 
 **Important Notes:**
 
 1. **Scale Factor**: Consumption fields menggunakan scale 100.0
    - Database value: `825.5` kg
-   - PLC value: `82550` (825.5 × 100)
-   - When reading back: PLC `82550` ÷ 100 = `825.5` kg
+   - PLC value: `82550` (825.5 Ã— 100)
+   - When reading back: PLC `82550` Ã· 100 = `825.5` kg
 
 2. **ASCII Encoding**: 2 characters per word, big-endian
-   - "WH/MO/00002" → 8 words (16 bytes)
+   - "WH/MO/00002" â†’ 8 words (16 bytes)
 
 3. **Boolean**: 
-   - True → PLC value `1`
-   - False → PLC value `0`
+   - True â†’ PLC value `1`
+   - False â†’ PLC value `0`
 
 ---
 
@@ -245,31 +245,31 @@ TEST WRITE TO READ_DATA_PLC_MAPPING AREA (D6001-D6077)
 ================================================================================
 
 [1] Reading batch_no=1 from database...
-✓ Found batch: WH/MO/00002
+âœ“ Found batch: WH/MO/00002
   Product: JF SUPER 2A 25
   Consumption: 2500.0
 
 [2] Writing data to PLC READ area...
-✓ Written: NO-MO = WH/MO/00002 → D6001
-✓ Written: finished_goods = JF SUPER 2A 25 → D6017
-✓ Written: Quantity Goods_id = 2500.0 → D6025
-✓ Written: SILO ID 101 (SILO BESAR) = 101 → D6026
-✓ Written: SILO 1 Consumption = 825.5 → D6027
+âœ“ Written: NO-MO = WH/MO/00002 â†’ D6001
+âœ“ Written: finished_goods = JF SUPER 2A 25 â†’ D6017
+âœ“ Written: Quantity Goods_id = 2500.0 â†’ D6025
+âœ“ Written: SILO ID 101 (SILO BESAR) = 101 â†’ D6026
+âœ“ Written: SILO 1 Consumption = 825.5 â†’ D6027
 ...
 
 ================================================================================
 WRITE RESULTS
 ================================================================================
-✓ Success: 33 fields
-✗ Failed: 0 fields
+âœ“ Success: 33 fields
+âœ— Failed: 0 fields
 ```
 
 **Key Features:**
 
-- ✅ Auto-apply scale factor (consumption × 10 untuk PLC)
-- ✅ ASCII encoding (big-endian, 2 chars/word)
-- ✅ Boolean conversion (0/1)
-- ✅ Error handling per field
+- âœ… Auto-apply scale factor (consumption Ã— 10 untuk PLC)
+- âœ… ASCII encoding (big-endian, 2 chars/word)
+- âœ… Boolean conversion (0/1)
+- âœ… Error handling per field
 
 ---
 
@@ -365,30 +365,30 @@ python test_plc_read.py
 
 ```
 [1] Get PLC Configuration
-✓ PLC IP: 192.168.1.2
-✓ PLC Port: 9600
+âœ“ PLC IP: 192.168.1.2
+âœ“ PLC Port: 9600
 
 [2] Read ASCII Field: NO-MO
-✓ Value: WH/MO/00002
+âœ“ Value: WH/MO/00002
 
 [3] Read REAL Field: Quantity Goods_id
-✓ Value: 2500.0
+âœ“ Value: 2500.0
 
 [4] Read Silo Consumption (with scale)
-✓ SILO 1 Consumption: 825.5 kg
+âœ“ SILO 1 Consumption: 825.5 kg
    (PLC value: 82550, scale: 100.0)
 
 [5] Read All Fields
-✓ Total fields: 33
-✓ Sample fields:
+âœ“ Total fields: 33
+âœ“ Sample fields:
    NO-MO: WH/MO/00002
    finished_goods: JF SUPER 2A 25
    Quantity Goods_id: 2500.0
 
 [6] Read Formatted Batch Data
-✓ MO ID: WH/MO/00002
-✓ Product: JF SUPER 2A 25
-✓ Silos with consumption:
+âœ“ MO ID: WH/MO/00002
+âœ“ Product: JF SUPER 2A 25
+âœ“ Silos with consumption:
    - Silo a: ID=101, Consumption=825.5 kg
    - Silo b: ID=102, Consumption=1200.0 kg
 ```
@@ -428,8 +428,8 @@ Response: {
     "updated": true
   }
 }
-✓ MO_ID: WH/MO/00002
-✓ Updated: True
+âœ“ MO_ID: WH/MO/00002
+âœ“ Updated: True
 ```
 
 **Database Changes:**
@@ -486,41 +486,41 @@ python test_complete_cycle.py
 
 ```
 ================================================================================
-COMPLETE TEST: Write → Read → Sync
+COMPLETE TEST: Write â†’ Read â†’ Sync
 ================================================================================
 
 [1] Verify PLC Configuration
-✓ PLC IP: 192.168.1.2
-✓ PLC Port: 9600
+âœ“ PLC IP: 192.168.1.2
+âœ“ PLC Port: 9600
 
 [2] Read MO_ID from PLC
-✓ MO_ID from PLC: WH/MO/00002
+âœ“ MO_ID from PLC: WH/MO/00002
 
 [3] Read Product Name from PLC
-✓ Product: JF SUPER 2A 25
+âœ“ Product: JF SUPER 2A 25
 
 [4] Read Quantity from PLC
-✓ Quantity: 2500.0
+âœ“ Quantity: 2500.0
 
 [5] Read Silo Consumptions from PLC
-✓ Silo A: 825.5 kg
-✓ Silo B: 1200.0 kg
-✓ Silo C: 950.0 kg
+âœ“ Silo A: 825.5 kg
+âœ“ Silo B: 1200.0 kg
+âœ“ Silo C: 950.0 kg
 
 [6] Read Complete Batch Data from PLC
-✓ MO_ID: WH/MO/00002
-✓ Product: JF SUPER 2A 25
-✓ Quantity: 2500.0
-✓ Status Manufacturing: True
-✓ Status Operation: True
-✓ Active Silos: 13 silos
+âœ“ MO_ID: WH/MO/00002
+âœ“ Product: JF SUPER 2A 25
+âœ“ Quantity: 2500.0
+âœ“ Status Manufacturing: True
+âœ“ Status Operation: True
+âœ“ Active Silos: 13 silos
 
 [7] Sync PLC Data to Database
 Syncing MO_ID: WH/MO/00002
-✓ Status: success
-✓ Message: Batch data updated successfully
-✓ MO_ID: WH/MO/00002
-✓ Updated: True
+âœ“ Status: success
+âœ“ Message: Batch data updated successfully
+âœ“ MO_ID: WH/MO/00002
+âœ“ Updated: True
 
   Database fields updated:
   - actual_consumption_silo_a, b, c, ...
@@ -531,29 +531,29 @@ Syncing MO_ID: WH/MO/00002
 
 [8] Verify Change Detection (Re-sync)
 Re-syncing same data (should detect no changes)...
-✓ Change detection works! No update needed.
+âœ“ Change detection works! No update needed.
 
 ================================================================================
 TEST SUMMARY
 ================================================================================
 
-✅ Complete cycle tested successfully!
+âœ… Complete cycle tested successfully!
 
 Flow verified:
-  1. ✓ Data written to PLC READ area (D6001-D6077)
-  2. ✓ Data read back from PLC via API
-  3. ✓ Data synced to database (actual_consumption_*)
-  4. ✓ Change detection working (smart update)
+  1. âœ“ Data written to PLC READ area (D6001-D6077)
+  2. âœ“ Data read back from PLC via API
+  3. âœ“ Data synced to database (actual_consumption_*)
+  4. âœ“ Change detection working (smart update)
 ```
 
 ---
 
 ### 5. test_handshake.py
 
-**Purpose**: Test PLC ↔ Middleware handshaking mechanism using status_read_data flags.
+**Purpose**: Test PLC â†” Middleware handshaking mechanism using status_read_data flags.
 
 **What it does:**
-1. **READ Area Test (D6075)**:
+1. **READ Area Test (per-batch status_read_data):**
    - Reset flag to 0 (PLC ready)
    - Mark as read (set to 1)
    - Verify flag changed
@@ -582,26 +582,26 @@ python test_handshake.py
 PLC HANDSHAKE SERVICE TEST
 ================================================================================
 This test validates the handshaking mechanism for:
-  - READ Area (D6075): Middleware → PLC
-  - WRITE Area (D7076): PLC → Middleware
-  - Equipment Failure (D8022): Middleware → PLC
+  - READ Area (per-batch status_read_data): Middleware â†’ PLC
+  - WRITE Area (D7076): PLC â†’ Middleware
+  - Equipment Failure (D8022): Middleware â†’ PLC
 
 ================================================================================
-TEST 1: READ Area Handshake (D6075)
+TEST 1: READ Area Handshake (per-batch status_read_data)
 ================================================================================
 
 [1] Check current READ area status:
    Current status: NOT READ (0)
 
 [2] Reset READ area status to 0 (simulate PLC ready):
-   ✓ Successfully reset to 0 (D6075=0)
+   âœ“ Successfully reset to 0 (status_read_data per-batch=0)
    Verified: False (should be False)
 
 [3] Mark READ area as read (simulate Middleware read):
-   ✓ Successfully marked as read (D6075=1)
+   âœ“ Successfully marked as read (status_read_data per-batch=1)
    Verified: True (should be True)
 
-✅ READ Area Handshake Test PASSED
+âœ… READ Area Handshake Test PASSED
 
 ================================================================================
 TEST 2: WRITE Area Handshake (D7076)
@@ -611,15 +611,15 @@ TEST 2: WRITE Area Handshake (D7076)
    PLC has read previous batch: NO (0)
 
 [2] Simulate PLC finished reading (set D7076=1):
-   ✓ Set D7076 = 1 (PLC has read previous batch)
+   âœ“ Set D7076 = 1 (PLC has read previous batch)
    Safe to write new batch: YES
 
 [3] Simulate Middleware writing new batch:
    After write, Middleware resets D7076 = 0
-   ✓ Successfully reset (D7076=0) - waiting for PLC to read
+   âœ“ Successfully reset (D7076=0) - waiting for PLC to read
    Verified: PLC has read = False (should be False)
 
-✅ WRITE Area Handshake Test PASSED
+âœ… WRITE Area Handshake Test PASSED
 
 ================================================================================
 TEST 3: Equipment Failure Handshake (D8022)
@@ -629,22 +629,22 @@ TEST 3: Equipment Failure Handshake (D8022)
    Current status: NOT READ (0)
 
 [2] Reset equipment failure status to 0:
-   ✓ Successfully reset to 0 (D8022=0)
+   âœ“ Successfully reset to 0 (D8022=0)
 
 [3] Mark equipment failure as read:
-   ✓ Successfully marked as read (D8022=1)
+   âœ“ Successfully marked as read (D8022=1)
    Verified: True (should be True)
 
-✅ Equipment Failure Handshake Test PASSED
+âœ… Equipment Failure Handshake Test PASSED
 
 ================================================================================
 TEST SUMMARY
 ================================================================================
-READ Area                      ✅ PASSED
-WRITE Area                     ✅ PASSED
-Equipment Failure              ✅ PASSED
+READ Area                      âœ… PASSED
+WRITE Area                     âœ… PASSED
+Equipment Failure              âœ… PASSED
 
-🎉 ALL TESTS PASSED!
+ðŸŽ‰ ALL TESTS PASSED!
 ```
 
 **Documentation:**
@@ -655,7 +655,7 @@ Equipment Failure              ✅ PASSED
 
 ## Testing Workflow
 
-### 🎯 Recommended Testing Sequence
+### ðŸŽ¯ Recommended Testing Sequence
 
 #### **Option 1: Quick Test (API Only)**
 
@@ -683,7 +683,7 @@ python test_write_read_area.py
 python test_complete_cycle.py
 ```
 
-#### **Option 3: Production-like Test (Odoo → PLC → Sync)**
+#### **Option 3: Production-like Test (Odoo â†’ PLC â†’ Sync)**
 
 ```bash
 # 1. Clear database
@@ -692,7 +692,7 @@ curl -X DELETE http://localhost:8000/api/sync/clear-mo-batch
 # 2. Fetch dari Odoo
 python test_plc_write_from_odoo.py
 
-# 3. Write to PLC WRITE area (D7000-D7076)
+# 3. Write to PLC WRITE area (D7000-D7976)
 # (already done in step 2)
 
 # Done! Now PLC will process and update READ area
@@ -726,12 +726,12 @@ python test_plc_sync.py
 ### 1. After test_write_read_area.py
 
 **PLC Memory (D6001-D6077):**
-- ✅ D6001-6008: Contains MO_ID as ASCII
-- ✅ D6017-6024: Contains product name
-- ✅ D6025: Contains quantity
-- ✅ D6027, D6029, D6031...: Contains silo consumptions (scaled × 10)
-- ✅ D6056-6057: Contains status (0/1)
-- ✅ D6075: Handshake flag (status_read_data)
+- âœ… D6001-6008: Contains MO_ID as ASCII
+- âœ… D6017-6024: Contains product name
+- âœ… D6025: Contains quantity
+- âœ… D6027, D6029, D6031...: Contains silo consumptions (scaled Ã— 10)
+- âœ… D6056-6057: Contains status (0/1)
+- âœ… status_read_data per-batch: D6076/D6176/.../D6976
 
 **Verification:**
 
@@ -760,10 +760,10 @@ WHERE batch_no = 1;
 ```
 
 Expected:
-- ✅ `actual_consumption_silo_a` = 825.5 (from PLC 8255 ÷ 10)
-- ✅ `actual_consumption_silo_b` = 1200.0 (from PLC 12000 ÷ 10)
-- ✅ `last_read_from_plc` = current timestamp
-- ✅ Status fields updated
+- âœ… `actual_consumption_silo_a` = 825.5 (from PLC 8255 Ã· 10)
+- âœ… `actual_consumption_silo_b` = 1200.0 (from PLC 12000 Ã· 10)
+- âœ… `last_read_from_plc` = current timestamp
+- âœ… Status fields updated
 
 ### 3. Change Detection Test
 
@@ -792,7 +792,7 @@ python test_plc_sync.py
 
 **Error:**
 ```
-✗ Batch not found! Please ensure batch_no=1 exists in mo_batch table.
+âœ— Batch not found! Please ensure batch_no=1 exists in mo_batch table.
 ```
 
 **Solution:**
@@ -820,7 +820,7 @@ python test_plc_write_from_odoo.py
 
 **Error:**
 ```
-✗ Error writing to PLC: [Errno 10061] Connection refused
+âœ— Error writing to PLC: [Errno 10061] Connection refused
 ```
 
 **Solution:**
@@ -879,7 +879,7 @@ python test_write_read_area.py
 
 **Example:**
 - Database: `consumption_silo_a = 825.5`
-- PLC should have: `8255` (825.5 × 10)
+- PLC should have: `8255` (825.5 Ã— 10)
 - But you see: `82.55` or `82550`
 
 **Verification:**
@@ -1032,12 +1032,12 @@ Remaining mo_batch rows: 9
 
 **Development Workflow:**
 
-1. **Development**: `test_write_read_area.py` → `test_plc_read.py`
+1. **Development**: `test_write_read_area.py` â†’ `test_plc_read.py`
 2. **Integration**: `test_complete_cycle.py`
 3. **Process Validation**: `test_mo_batch_process.py`
-4. **Production**: PLC updates D6001-D6077 → `test_plc_sync.py` (periodic)
-5. **CSV Simulation**: `test_write_read_area_from_csv.py` → `test_plc_sync.py`
-6. **CSV Snapshot**: `test_export_read_area_to_csv.py` → edit CSV → `test_write_read_area_from_csv.py`
+4. **Production**: PLC updates D6001-D6077 â†’ `test_plc_sync.py` (periodic)
+5. **CSV Simulation**: `test_write_read_area_from_csv.py` â†’ `test_plc_sync.py`
+6. **CSV Snapshot**: `test_export_read_area_to_csv.py` â†’ edit CSV â†’ `test_write_read_area_from_csv.py`
 7. **Odoo-driven READ Simulation**: `test_write_read_area_from_odoo.py --loop` -> `test_plc_sync.py`
 
 ---
@@ -1057,3 +1057,5 @@ Remaining mo_batch rows: 9
 **Document Version:** 1.1  
 **Last Updated:** February 17, 2026  
 **Author:** FastAPI SCADA-Odoo Integration Team
+
+

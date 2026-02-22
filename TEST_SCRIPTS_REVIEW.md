@@ -1,28 +1,28 @@
-# Test Scripts Review - Equipment Reference Updates (LQ114/LQ115)
+﻿# Test Scripts Review - Equipment Reference Updates (LQ114/LQ115)
 
 ## Summary
 Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/LQ115) has shifted memory addresses. Test scripts need review for comment updates and potential hardcoded references.
 
 ---
 
-## ✅ Status Summary
+## âœ… Status Summary
 
 | Category | Scripts | Status | Action |
 |----------|---------|--------|--------|
-| **CSV Input Writer** | test_write_read_area_from_csv.py | ⚠️ NEEDS UPDATE | Update comments: D6001-D6058 → D6001-D6077 |
-| **CSV Exporter** | test_export_read_area_to_csv.py | ⚠️ NEEDS UPDATE | Update comments: D6001-D6058 → D6001-D6077 |
-| **PLC Write (Direct)** | test_write_read_area.py | ⚠️ NEEDS UPDATE | Update comments: D6001-D6058 → D6001-D6077 |
-| **Odoo Writer** | test_write_read_area_from_odoo.py | ⚠️ NEEDS UPDATE | Update comments: D6001-D6069 → D6001-D6077 |
-| **Complete Cycle** | test_complete_cycle.py | ⚠️ NEEDS UPDATE | Update comments: D6001-D6058 → D6001-D6077 |
-| **Equipment Failure Write** | test_equipment_failure_write.py | ✅ OK | Uses CSV dynamically - no hardcoded addresses |
-| **Equipment Failure Read** | test_equipment_failure_read.py | ✅ OK | Uses CSV dynamically - no hardcoded addresses |
-| **Equipment Failure Sync** | test_equipment_failure_odoo_sync.py | ✅ OK | Generic sync test - no address dependencies |
+| **CSV Input Writer** | test_write_read_area_from_csv.py | âš ï¸ NEEDS UPDATE | Update comments: D6001-D6058 â†’ D6001-D6077 |
+| **CSV Exporter** | test_export_read_area_to_csv.py | âš ï¸ NEEDS UPDATE | Update comments: D6001-D6058 â†’ D6001-D6077 |
+| **PLC Write (Direct)** | test_write_read_area.py | âš ï¸ NEEDS UPDATE | Update comments: D6001-D6058 â†’ D6001-D6077 |
+| **Odoo Writer** | test_write_read_area_from_odoo.py | âš ï¸ NEEDS UPDATE | Update comments: D6001-D6069 â†’ D6001-D6077 |
+| **Complete Cycle** | test_complete_cycle.py | âš ï¸ NEEDS UPDATE | Update comments: D6001-D6058 â†’ D6001-D6077 |
+| **Equipment Failure Write** | test_equipment_failure_write.py | âœ… OK | Uses CSV dynamically - no hardcoded addresses |
+| **Equipment Failure Read** | test_equipment_failure_read.py | âœ… OK | Uses CSV dynamically - no hardcoded addresses |
+| **Equipment Failure Sync** | test_equipment_failure_odoo_sync.py | âœ… OK | Generic sync test - no address dependencies |
 
 ---
 
 ## Detailed File Analysis
 
-### 1. ⚠️ test_write_read_area_from_csv.py
+### 1. âš ï¸ test_write_read_area_from_csv.py
 **Current Status:** Comments outdated
 **Current Reference Range:** D6001-D6058
 **New Reference Range:** D6001-D6077
@@ -33,16 +33,16 @@ Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/L
 - **Line 194:** `print("This will write values into D6001-D6058 using CSV Value column.")`
 
 **Changes:**
-- D6001-D6058 → D6001-D6077
+- D6001-D6058 â†’ D6001-D6077
 
-**Script Logic:** ✅ Already handles dynamic memory addresses from CSV - NO CODE CHANGES NEEDED
+**Script Logic:** âœ… Already handles dynamic memory addresses from CSV - NO CODE CHANGES NEEDED
 - Reads CSV headers and processes dynamically
 - Uses `_parse_dm_address()` to extract start address and count
 - Should work correctly with updated CSV
 
 ---
 
-### 2. ⚠️ test_export_read_area_to_csv.py
+### 2. âš ï¸ test_export_read_area_to_csv.py
 **Current Status:** Comments outdated
 **Current Reference Range:** D6001-D6058
 **New Reference Range:** D6001-D6077
@@ -51,16 +51,16 @@ Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/L
 - **Line 2:** `"""Export PLC READ area (D6001-D6058) to CSV.`
 
 **Changes:**
-- D6001-D6058 → D6001-D6077
+- D6001-D6058 â†’ D6001-D6077
 
-**Script Logic:** ✅ Already handles dynamic addresses
+**Script Logic:** âœ… Already handles dynamic addresses
 - Uses `_load_mapping()` to read REF_DATA_PLC_MAPPING.json (which is up to date)
 - Processes all fields dynamically based on mapping
 - No code changes needed
 
 ---
 
-### 3. ⚠️ test_write_read_area.py
+### 3. âš ï¸ test_write_read_area.py
 **Current Status:** Comments outdated
 **Current Reference Range:** D6001-D6058
 **New Reference Range:** D6001-D6077
@@ -73,9 +73,9 @@ Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/L
 - **Line 279:** `print("2. Write data to PLC READ area (D6001-D6058)")`
 
 **Changes:**
-- D6001-D6058 → D6001-D6077
+- D6001-D6058 â†’ D6001-D6077
 
-**Script Logic:** ✅ Handles dynamic field mapping
+**Script Logic:** âœ… Handles dynamic field mapping
 - Reads mo_batch from database
 - Uses READ_DATA_PLC_MAPPING.json for field names and memory addresses
 - Dynamically processes all fields including new LQ114/LQ115
@@ -83,7 +83,7 @@ Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/L
 
 ---
 
-### 4. ⚠️ test_write_read_area_from_odoo.py
+### 4. âš ï¸ test_write_read_area_from_odoo.py
 **Current Status:** Comments outdated
 **Current Reference Range:** D6001-D6069 (was incorrect)
 **New Reference Range:** D6001-D6076
@@ -92,7 +92,7 @@ Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/L
 - **Line 4:** `Use this script to simulate PLC READ memory (D6001-D6069) without editing`
 
 **Changes:**
-- D6001-D6069 → D6001-D6076
+- D6001-D6069 â†’ D6001-D6076
 
 **Script Logic:** Review needed
 - Contains mapping dictionary `_SILO_NUMBER_TO_LETTER` for silos 101-113 only
@@ -101,96 +101,96 @@ Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/L
 
 ---
 
-### 5. ⚠️ test_complete_cycle.py
+### 5. âš ï¸ test_complete_cycle.py
 **Current Status:** Comments outdated
 **Current Reference Range:** D6001-D6058
 **New Reference Range:** D6001-D6077
 
 **Lines to Update:**
-- **Line 177:** `print("  1. ✓ Data written to PLC READ area (D6001-D6058)")`
+- **Line 177:** `print("  1. âœ“ Data written to PLC READ area (D6001-D6058)")`
 
 **Changes:**
-- D6001-D6058 → D6001-D6077
+- D6001-D6058 â†’ D6001-D6077
 
-**Script Logic:** ✅ Already handles API endpoints
+**Script Logic:** âœ… Already handles API endpoints
 - Calls `/plc/read-field` and `/plc/read-batch` endpoints
 - These endpoints use updated reference data
 - Should work correctly with new equipment
 
 ---
 
-### 6. ✅ test_equipment_failure_write.py
-**Current Status:** ✅ OK
+### 6. âœ… test_equipment_failure_write.py
+**Current Status:** âœ… OK
 **Memory Range:** Uses CSV dynamically (D8000-D8021)
 
-**Script Logic:** ✅ Already correctly configured
+**Script Logic:** âœ… Already correctly configured
 - Reads memory addresses from equipment_failure_input.csv
 - Uses `parse_dm_address()` for dynamic parsing
 - CSV has been updated to correct memory addresses
 
-**No Changes Needed** ✅
+**No Changes Needed** âœ…
 
 ---
 
-### 7. ✅ test_equipment_failure_read.py
-**Current Status:** ✅ OK  
+### 7. âœ… test_equipment_failure_read.py
+**Current Status:** âœ… OK  
 **Memory Range:** Uses CSV dynamically (D8000-D8021)
 
-**Script Logic:** ✅ Already correctly configured
+**Script Logic:** âœ… Already correctly configured
 - Reads memory addresses from equipment_failure_input.csv
 - Uses `parse_dm_address()` for dynamic parsing
 - CSV has been updated to correct memory addresses
 
-**No Changes Needed** ✅
+**No Changes Needed** âœ…
 
 ---
 
-### 8. ✅ test_equipment_failure_odoo_sync.py
-**Current Status:** ✅ OK
+### 8. âœ… test_equipment_failure_odoo_sync.py
+**Current Status:** âœ… OK
 
-**Script Logic:** ✅ Generic sync test
+**Script Logic:** âœ… Generic sync test
 - Tests equipment failure API endpoints
 - No hardcoded memory addresses
 - Uses service layer that reads from updated reference files
 
-**No Changes Needed** ✅
+**No Changes Needed** âœ…
 
 ---
 
 ## Reference Files Verification
 
-### ✅ READ_DATA_PLC_MAPPING.json
-- **Status:** Updated ✅
+### âœ… READ_DATA_PLC_MAPPING.json
+- **Status:** Updated âœ…
 - **Total Entries:** 37 items
 - **Memory Range:** D6001-D6076 (with new LQ114/LQ115)
 - **Last Entries:** 
   - No 31-32: LQ114 at D6066-D6068
-  - No 33-34: LQ115 at D6070-D6072
-  - No 35: status_manufacturing at D6073
-  - No 36: status_operation at D6074
-  - No 37: weight_finished_good at D6075-D6076
+  - No 34-35: LQ115 at D6069-D6071
+  - No 36: status_manufacturing at D6072
+  - No 37: status_operation at D6073
+  - No 38: weight_finished_good at D6074-D6075
+  - No 39: status_read_data at D6076
 
-### ✅ read_data_plc_input.csv
-- **Status:** Updated ✅
-- **Total Rows:** 37 data rows
-- **Memory Range:** D6001-D6076
-- **Last Entries:**
+### âœ… read_data_plc_input.csv
+- **Status:** Updated âœ…
+- **Total Rows:** 39 data rows
+- **Memory Range:** D6000-D6076
   - No 31-32: LQ114 entries
-  - No 33-34: LQ115 entries
-  - No 35-37: Updated memory addresses
+  - No 33-35: LQ115 entries
+  - No 36-39: status + weight + status_read_data
 
-### ✅ EQUIPMENT_FAILURE_REFERENCE.json
-- **Status:** Updated ✅
+### âœ… EQUIPMENT_FAILURE_REFERENCE.json
+- **Status:** Updated âœ…
 - **Memory Range:** D8000-D8021
 - **Total Entries:** 8 fields
 
-### ✅ equipment_failure_input.csv
-- **Status:** Updated ✅
+### âœ… equipment_failure_input.csv
+- **Status:** Updated âœ…
 - **Memory Range:** D8000-D8021
 - **All addresses corrected** from old D7710-D7732 range
 
-### ✅ silo_data.json
-- **Status:** Updated ✅
+### âœ… silo_data.json
+- **Status:** Updated âœ…
 - **Total Equipment:** 15 items (13 Silos + 2 Liquid Tanks)
 - **SCADA Tags:** All present (silo_a-m, lq_tetes, lq_fml)
 - **Equipment Codes:** Standardized to equipment_code field
@@ -199,7 +199,7 @@ Updated memory mapping for 15 equipment items (13 Silos + 2 Liquid Tanks LQ114/L
 
 ## Action Items - Comment Updates Only
 
-### No Code Logic Changes Needed ✅
+### No Code Logic Changes Needed âœ…
 All test scripts use dynamic address mapping from reference files. The CSV files are already updated with correct memory addresses.
 
 ### Only Documentation/Comments Need Updates:
@@ -217,7 +217,7 @@ All test scripts use dynamic address mapping from reference files. The CSV files
 
 ## Special Review: test_write_read_area_from_odoo.py
 
-⚠️ **Requires Code Review** - Not just comments
+âš ï¸ **Requires Code Review** - Not just comments
 
 **Current Code (lines 31-39):**
 ```python
@@ -276,15 +276,16 @@ Before running tests:
 
 | Change Type | Count | Files |
 |------------|-------|-------|
-| Comment Updates | 11 lines | 5 files ✅ DONE |
+| Comment Updates | 11 lines | 5 files âœ… DONE |
 | Code Logic Review | 1 file | test_write_read_area_from_odoo.py |
-| Equipment Failure Tests | ✅ OK | 3 files |
-| CSV Dynamic Usage | ✅ OK | All modern tests |
-| **NEW: Handshake Logic** | ✅ DONE | plc_handshake_service.py + test_handshake.py |
+| Equipment Failure Tests | âœ… OK | 3 files |
+| CSV Dynamic Usage | âœ… OK | All modern tests |
+| **NEW: Handshake Logic** | âœ… DONE | plc_handshake_service.py + test_handshake.py |
 
 **Memory Addresses Updated:**
-- READ Area: D6001-D6077 (includes status_read_data at D6075)
-- WRITE Area: D7000-D7076 (includes status_read_data at D7076)  
+- READ Area: D6000-D6977 (status_read_data per-batch at D6076, D6176, ..., D6976)
+- WRITE Area: D7000-D7976 (handshake at D7076)  
 - Equipment Failure: D8000-D8022 (includes status_read_data at D8022)
 
-**Total Effort:** Low - Mostly documentation updates + new handshake service ✅
+**Total Effort:** Low - Mostly documentation updates + new handshake service âœ…
+

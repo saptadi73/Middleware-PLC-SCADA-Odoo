@@ -1,4 +1,4 @@
-# Enhanced Scheduler & MO History Implementation Guide
+﻿# Enhanced Scheduler & MO History Implementation Guide
 
 ## Overview
 
@@ -32,18 +32,18 @@ batch_data = {
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    ENHANCED SCHEDULER                            │
-│                  (4 Periodic Background Tasks)                   │
-└─────────────────────────────────────────────────────────────────┘
-         │              │              │              │
-         ▼              ▼              ▼              ▼
-    ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-    │ TASK 1 │    │ TASK 2 │    │ TASK 3 │    │ TASK 4 │
-    │        │    │        │    │        │    │        │
-    │ Sync   │    │ Read   │    │Process │    │Monitor │
-    │ MO     │    │ PLC    │    │Complet.│    │ Health │
-    └────────┘    └────────┘    └────────┘    └────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    ENHANCED SCHEDULER                            â”‚
+â”‚                  (4 Periodic Background Tasks)                   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+         â”‚              â”‚              â”‚              â”‚
+         â–¼              â–¼              â–¼              â–¼
+    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”
+    â”‚ TASK 1 â”‚    â”‚ TASK 2 â”‚    â”‚ TASK 3 â”‚    â”‚ TASK 4 â”‚
+    â”‚        â”‚    â”‚        â”‚    â”‚        â”‚    â”‚        â”‚
+    â”‚ Sync   â”‚    â”‚ Read   â”‚    â”‚Process â”‚    â”‚Monitor â”‚
+    â”‚ MO     â”‚    â”‚ PLC    â”‚    â”‚Complet.â”‚    â”‚ Health â”‚
+    â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â””â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ## Task Details
@@ -92,8 +92,8 @@ batch_data = {
 - Can be triggered manually via `/admin/manual/trigger-plc-sync`
 
 **Data Protection**:
-- ✅ Update only if `status_manufacturing = 0` (in progress)
-- ❌ Skip if `status_manufacturing = 1` (completed)
+- âœ… Update only if `status_manufacturing = 0` (in progress)
+- âŒ Skip if `status_manufacturing = 1` (completed)
 - Prevents overwriting final data
 
 ---
@@ -106,7 +106,7 @@ batch_data = {
 1. Find all completed batches (status_manufacturing = 1)
 2. For each completed batch:
    - Prepare consumption data dari actual_consumption_silo_* fields
-   - **Map field names**: `actual_consumption_silo_{letter}` (DB) → `consumption_silo_{letter}` (API)
+   - **Map field names**: `actual_consumption_silo_{letter}` (DB) â†’ `consumption_silo_{letter}` (API)
    - Update consumption to Odoo via `/api/scada/mo/update-with-consumptions`
    - Mark MO as done in Odoo
    - Move batch data to mo_histories table
@@ -421,10 +421,10 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/plc
 
 | Task | Interval | Configurable? |
 |------|----------|---------------|
-| Task 1: Auto-sync MO | 60 min (default) | ✅ Via SYNC_INTERVAL_MINUTES |
-| Task 2: PLC Read Sync | 5 min | ❌ Fixed |
-| Task 3: Process Completed | 3 min | ❌ Fixed |
-| Task 4: Health Monitoring | 10 min | ❌ Fixed |
+| Task 1: Auto-sync MO | 60 min (default) | âœ… Via SYNC_INTERVAL_MINUTES |
+| Task 2: PLC Read Sync | 5 min | âŒ Fixed |
+| Task 3: Process Completed | 3 min | âŒ Fixed |
+| Task 4: Health Monitoring | 10 min | âŒ Fixed |
 
 **Recommendation**: Keep these intervals as-is for optimal performance. Adjust only if:
 - PLC cycle time is significantly different
@@ -438,86 +438,86 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/plc
 ### Complete Workflow
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│ 1. ODOO: Confirmed MOs waiting to be processed                   │
-└────────────────────────┬─────────────────────────────────────────┘
-                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 2. TASK 1: Fetch MO list from Odoo (every 60 min)               │
-│    - Check if mo_batch is empty                                  │
-│    - If empty: Fetch 10 MOs                                      │
-│    - Insert to mo_batch table                                    │
-└────────────────────────┬─────────────────────────────────────────┘
-                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 3. PLC: Write MO data to PLC memory (D7000-D7076)               │
-│    - Manual or via /plc/write-mo-batch/{mo_id}                  │
-│    - Handshake: Check D7076=1 before write (PLC ready)          │
-│    - PLC receives and starts processing                          │
-└────────────────────────┬─────────────────────────────────────────┘
-                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 4. TASK 2: Read PLC memory (every 5 min)                        │
-│    - Read area D6001-D6077 (includes LQ114, LQ115 tanks)        │
-│    - Update mo_batch with actual consumption                     │
-│    - Update status_manufacturing, status_operation               │
-│    - Handshake: Mark D6075=1 after reading (data read)          │
-│    - Skip if status_manufacturing already = 1                    │
-└────────────────────────┬─────────────────────────────────────────┘
-                         ▼
-         ┌───────────────────────────────┐
-         │ PLC: Batch processing         │
-         │ - Sets status_manufacturing=1 │
-         │   when batch is done          │
-         └───────────┬───────────────────┘
-                     ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 5. TASK 3: Process completed batches (every 3 min)              │
-│    - Find batches with status_manufacturing = 1                  │
-│    - Update consumption to Odoo                                  │
-│    - Mark MO as done in Odoo                                     │
-│    - Move to mo_histories table                                  │
-│    - Delete from mo_batch                                        │
-└────────────────────────┬─────────────────────────────────────────┘
-                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ 6. MO Histories Table: Archived completed batches               │
-│    - Can be viewed via /admin/history                            │
-│    - Used for analytics and troubleshooting                      │
-└──────────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 1. ODOO: Confirmed MOs waiting to be processed                   â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 2. TASK 1: Fetch MO list from Odoo (every 60 min)               â”‚
+â”‚    - Check if mo_batch is empty                                  â”‚
+â”‚    - If empty: Fetch 10 MOs                                      â”‚
+â”‚    - Insert to mo_batch table                                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 3. PLC: Write MO data to PLC memory (D7000-D7976)               â”‚
+â”‚    - Manual or via /plc/write-mo-batch/{mo_id}                  â”‚
+â”‚    - Handshake: Check D7076=1 before write (PLC ready)          â”‚
+â”‚    - PLC receives and starts processing                          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 4. TASK 2: Read PLC memory (every 5 min)                        â”‚
+â”‚    - Read area D6001-D6077 (includes LQ114, LQ115 tanks)        â”‚
+â”‚    - Update mo_batch with actual consumption                     â”‚
+â”‚    - Update status_manufacturing, status_operation               â”‚
+â”‚    - Handshake: Mark status_read_data per-batch=1 after reading (data read)          â”‚
+â”‚    - Skip if status_manufacturing already = 1                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â–¼
+         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+         â”‚ PLC: Batch processing         â”‚
+         â”‚ - Sets status_manufacturing=1 â”‚
+         â”‚   when batch is done          â”‚
+         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                     â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 5. TASK 3: Process completed batches (every 3 min)              â”‚
+â”‚    - Find batches with status_manufacturing = 1                  â”‚
+â”‚    - Update consumption to Odoo                                  â”‚
+â”‚    - Mark MO as done in Odoo                                     â”‚
+â”‚    - Move to mo_histories table                                  â”‚
+â”‚    - Delete from mo_batch                                        â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 6. MO Histories Table: Archived completed batches               â”‚
+â”‚    - Can be viewed via /admin/history                            â”‚
+â”‚    - Used for analytics and troubleshooting                      â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### Error Recovery Workflow
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│ Batch Completed in PLC (status_manufacturing = 1)               │
-└────────────────────────┬─────────────────────────────────────────┘
-                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ TASK 3: Try to push to Odoo                                     │
-└────────────────────────┬─────────────────────────────────────────┘
-                         │
-            ┌────────────┴────────────┐
-            ▼                         ▼
-     ┌──────────────┐          ┌──────────────┐
-     │ SUCCESS      │          │ FAILURE      │
-     │ - Move to    │          │ - Keep in    │
-     │   history    │          │   mo_batch   │
-     │ - Delete     │          │ - Log error  │
-     └──────────────┘          └──────┬───────┘
-                                      │
-                                      ▼
-                       ┌──────────────────────────────┐
-                       │ Operator Actions:            │
-                       │                              │
-                       │ 1. Check /admin/failed-to-push│
-                       │ 2. Investigate error         │
-                       │ 3. Fix issue (network, Odoo) │
-                       │ 4. Manual retry:             │
-                       │    /admin/manual/retry-push- │
-                       │    odoo/{mo_id}              │
-                       └──────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Batch Completed in PLC (status_manufacturing = 1)               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ TASK 3: Try to push to Odoo                                     â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                         â”‚
+            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+            â–¼                         â–¼
+     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+     â”‚ SUCCESS      â”‚          â”‚ FAILURE      â”‚
+     â”‚ - Move to    â”‚          â”‚ - Keep in    â”‚
+     â”‚   history    â”‚          â”‚   mo_batch   â”‚
+     â”‚ - Delete     â”‚          â”‚ - Log error  â”‚
+     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜          â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜
+                                      â”‚
+                                      â–¼
+                       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                       â”‚ Operator Actions:            â”‚
+                       â”‚                              â”‚
+                       â”‚ 1. Check /admin/failed-to-pushâ”‚
+                       â”‚ 2. Investigate error         â”‚
+                       â”‚ 3. Fix issue (network, Odoo) â”‚
+                       â”‚ 4. Manual retry:             â”‚
+                       â”‚    /admin/manual/retry-push- â”‚
+                       â”‚    odoo/{mo_id}              â”‚
+                       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -535,18 +535,18 @@ All tasks and services log with prefix untuk easy filtering:
 ```
 INFO: [TASK 1] Auto-sync MO task running...
 INFO: [TASK 1] Table mo_batch is empty. Fetching new batches from Odoo...
-INFO: [TASK 1] ✓ Auto-sync completed: 10 MO batches synced
+INFO: [TASK 1] âœ“ Auto-sync completed: 10 MO batches synced
 
 INFO: [TASK 2] PLC read sync task running...
 INFO: [TASK 2] Found 10 active batches
-INFO: [TASK 2] ✓ Updated batch 1 (MO: WH/MO/00001)
-INFO: [TASK 2] ✓ PLC sync completed: 10/10 batches updated
+INFO: [TASK 2] âœ“ Updated batch 1 (MO: WH/MO/00001)
+INFO: [TASK 2] âœ“ PLC sync completed: 10/10 batches updated
 
 INFO: [TASK 3] Process completed batches task running...
 INFO: [TASK 3] Found 2 completed batches
 INFO: [TASK 3] Processing completed batch 1 (MO: WH/MO/00001)
-INFO: [TASK 3] ✓ Processed and archived MO WH/MO/00001
-INFO: [TASK 3] ✓ Completed batches processing finished: 2/2 batches processed
+INFO: [TASK 3] âœ“ Processed and archived MO WH/MO/00001
+INFO: [TASK 3] âœ“ Completed batches processing finished: 2/2 batches processed
 ```
 
 ---
@@ -561,11 +561,11 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 **Expected Output**:
 ```
-✓ Task 1: Auto-sync MO scheduler added (interval: 60 minutes)
-✓ Task 2: PLC read sync scheduler added (interval: 5 minutes)
-✓ Task 3: Process completed batches scheduler added (interval: 3 minutes)
-✓ Task 4: Batch health monitoring scheduler added (interval: 10 minutes)
-✓✓✓ Enhanced Scheduler STARTED with 4 tasks ✓✓✓
+âœ“ Task 1: Auto-sync MO scheduler added (interval: 60 minutes)
+âœ“ Task 2: PLC read sync scheduler added (interval: 5 minutes)
+âœ“ Task 3: Process completed batches scheduler added (interval: 3 minutes)
+âœ“ Task 4: Batch health monitoring scheduler added (interval: 10 minutes)
+âœ“âœ“âœ“ Enhanced Scheduler STARTED with 4 tasks âœ“âœ“âœ“
 ```
 
 ### 2. Test Monitoring Endpoints
@@ -641,7 +641,7 @@ curl http://localhost:8000/api/admin/failed-to-push
 ### Issue: Scheduler not starting
 
 **Check**:
-1. `.env` → `ENABLE_AUTO_SYNC=true`
+1. `.env` â†’ `ENABLE_AUTO_SYNC=true`
 2. Restart application
 3. Check logs for "Enhanced Scheduler STARTED"
 
@@ -744,7 +744,7 @@ Archive table for completed/failed batches.
 
 ## Summary
 
-✅ **Implemented**:
+âœ… **Implemented**:
 - Enhanced scheduler dengan 4 periodic tasks
 - MO history service dan table
 - Real-time monitoring endpoints
@@ -753,7 +753,7 @@ Archive table for completed/failed batches.
 - Comprehensive logging
 - Data protection untuk completed batches
 
-✅ **Key Features**:
+âœ… **Key Features**:
 - Automatic MO sync dari Odoo
 - Periodic PLC read dan database update
 - Automatic processing completed batches
@@ -761,9 +761,10 @@ Archive table for completed/failed batches.
 - Real-time monitoring dashboard
 - Complete history tracking
 
-✅ **Production Ready**:
+âœ… **Production Ready**:
 - Error handling dan recovery
 - Transaction safety
 - Data protection
 - Comprehensive logging
 - Manual override capabilities
+

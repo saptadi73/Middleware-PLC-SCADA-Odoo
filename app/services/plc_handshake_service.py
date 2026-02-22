@@ -3,11 +3,12 @@ PLC Handshake Service
 
 Manages handshaking between Middleware and PLC through status_read_data flags.
 
-READ Area Handshaking (D6075):
-- Middleware reads data from PLC (D6001-D6074)
-- After successful read, Middleware sets D6075 = 1 (mark as read)
-- PLC sees D6075=1 and prepares next data cycle
-- PLC resets D6075 back to 0 when ready for next read
+READ Area Handshaking (per-batch status_read_data):
+- Middleware reads data from PLC per batch READ area
+- After successful read, Middleware sets status_read_data for that batch:
+  BATCH 01..10 -> D6076, D6176, ..., D6976
+- PLC sees status_read_data=1 and prepares next data cycle
+- PLC resets status_read_data back to 0 when ready for next read
 
 WRITE Area Handshaking (D7076):
 - Middleware writes batch data to PLC (D7000-D7075)
@@ -45,9 +46,13 @@ class PLCHandshakeService:
     """Service for managing PLC handshake flags (status_read_data)."""
     
     # Memory addresses for status_read_data flags
-    READ_AREA_STATUS_ADDRESS = 6075  # D6075 for READ area handshake
     WRITE_AREA_STATUS_ADDRESS = 7076  # D7076 for WRITE/BATCH area handshake  
     EQUIPMENT_FAILURE_STATUS_ADDRESS = 8022  # D8022 for equipment failure handshake
+    MANUAL_WEIGHING_STATUS_ADDRESS = 9011  # D9011 for manual weighing handshake (TASK 5)
+    READ_BATCH_STATUS_START = 6076  # BATCH_READ_01 status_read_data
+    READ_BATCH_STATUS_STEP = 100    # Per-batch offset
+    READ_BATCH_MIN = 1
+    READ_BATCH_MAX = 10
     
     def __init__(self):
         self.settings = get_settings()
@@ -64,10 +69,14 @@ class PLCHandshakeService:
             status = self._read_status_flag(self.WRITE_AREA_STATUS_ADDRESS)
             
             if status == 1:
-                logger.info("✓ WRITE area handshake: PLC has read batch data (D7076=1). Safe to write.")
+                logger.info(
+                    "WRITE area handshake: PLC has read batch data (D7076=1). Safe to write."
+                )
                 return True
             else:
-                logger.warning("⚠ WRITE area handshake: PLC hasn't read yet (D7076=0). Skip write to avoid overwrite.")
+                logger.warning(
+                    "WRITE area handshake: PLC hasn't read yet (D7076=0). Skip write to avoid overwrite."
+                )
                 return False
                 
         except Exception as exc:
@@ -75,37 +84,48 @@ class PLCHandshakeService:
             # Default to False (safer - don't write if status unknown)
             return False
     
-    def mark_read_area_as_read(self) -> bool:
+    def _get_read_status_address(self, batch_no: int) -> int:
+        """Resolve READ status_read_data address for batch number (1..10)."""
+        if batch_no < self.READ_BATCH_MIN or batch_no > self.READ_BATCH_MAX:
+            raise ValueError(
+                f"batch_no must be {self.READ_BATCH_MIN}..{self.READ_BATCH_MAX}, got {batch_no}"
+            )
+        return self.READ_BATCH_STATUS_START + (
+            (batch_no - self.READ_BATCH_MIN) * self.READ_BATCH_STATUS_STEP
+        )
+
+    def mark_read_area_as_read(self, batch_no: int = 1) -> bool:
         """
-        Mark READ area as read by Middleware (set D6075 = 1).
+        Mark READ area as read by Middleware (set per-batch status_read_data = 1).
         
-        Called after successfully reading data from PLC READ area (D6001-D6074).
+        Called after successfully reading data from PLC READ area for a specific batch.
         This tells PLC that Middleware has processed the data.
         
         Returns:
             True if successfully marked, False otherwise
         """
         try:
-            self._write_status_flag(self.READ_AREA_STATUS_ADDRESS, 1)
-            logger.info("✓ Marked READ area as read (D6075=1)")
+            address = self._get_read_status_address(batch_no)
+            self._write_status_flag(address, 1)
+            logger.info("Marked READ area batch %s as read (D%s=1)", batch_no, address)
             return True
         except Exception as exc:
-            logger.error(f"Error marking READ area as read: {exc}", exc_info=True)
+            logger.error(f"Error marking READ area batch as read: {exc}", exc_info=True)
             return False
     
-    def check_read_area_status(self) -> bool:
+    def check_read_area_status(self, batch_no: int = 1) -> bool:
         """
         Check READ area status flag.
         
         Returns:
-            True: Middleware has already read (D6075=1)
-            False: Not yet read (D6075=0)
+            True: Middleware has already read (status_read_data=1)
+            False: Not yet read (status_read_data=0)
         """
         try:
-            status = self._read_status_flag(self.READ_AREA_STATUS_ADDRESS)
+            status = self._read_status_flag(self._get_read_status_address(batch_no))
             return status == 1
         except Exception as exc:
-            logger.error(f"Error checking READ area status: {exc}", exc_info=True)
+            logger.error(f"Error checking READ area batch status: {exc}", exc_info=True)
             return False
     
     def mark_equipment_failure_as_read(self) -> bool:
@@ -119,7 +139,7 @@ class PLCHandshakeService:
         """
         try:
             self._write_status_flag(self.EQUIPMENT_FAILURE_STATUS_ADDRESS, 1)
-            logger.info("✓ Marked equipment failure as read (D8022=1)")
+            logger.info("Marked equipment failure as read (D8022=1)")
             return True
         except Exception as exc:
             logger.error(f"Error marking equipment failure as read: {exc}", exc_info=True)
@@ -140,6 +160,54 @@ class PLCHandshakeService:
             logger.error(f"Error checking equipment failure status: {exc}", exc_info=True)
             return False
     
+    def mark_manual_weighing_as_read(self) -> bool:
+        """
+        Mark manual weighing data as read by Middleware (set D9011 = 1).
+        
+        Called after successfully reading and syncing manual weighing data to Odoo.
+        This tells PLC that Middleware has processed the weighing data.
+        
+        Returns:
+            True if successfully marked, False otherwise
+        """
+        try:
+            self._write_status_flag(self.MANUAL_WEIGHING_STATUS_ADDRESS, 1)
+            logger.info("Marked manual weighing as read (D9011=1)")
+            return True
+        except Exception as exc:
+            logger.error(f"Error marking manual weighing as read: {exc}", exc_info=True)
+            return False
+    
+    def check_manual_weighing_status(self) -> bool:
+        """
+        Check manual weighing status flag.
+        
+        Returns:
+            True: Middleware has already read (D9011=1)
+            False: Not yet read (D9011=0)
+        """
+        try:
+            status = self._read_status_flag(self.MANUAL_WEIGHING_STATUS_ADDRESS)
+            return status == 1
+        except Exception as exc:
+            logger.error(f"Error checking manual weighing status: {exc}", exc_info=True)
+            return False
+    
+    def reset_manual_weighing_status(self) -> bool:
+        """
+        Reset manual weighing status to 0 (for testing purposes).
+        
+        Returns:
+            True if successfully reset, False otherwise
+        """
+        try:
+            self._write_status_flag(self.MANUAL_WEIGHING_STATUS_ADDRESS, 0)
+            logger.info("Reset manual weighing status (D9011=0)")
+            return True
+        except Exception as exc:
+            logger.error(f"Error resetting manual weighing status: {exc}", exc_info=True)
+            return False
+    
     def reset_write_area_status(self) -> bool:
         """
         Reset WRITE area status to 0 (for testing purposes).
@@ -151,15 +219,15 @@ class PLCHandshakeService:
         """
         try:
             self._write_status_flag(self.WRITE_AREA_STATUS_ADDRESS, 0)
-            logger.info("✓ Reset WRITE area status (D7076=0)")
+            logger.info("Reset WRITE area status (D7076=0)")
             return True
         except Exception as exc:
             logger.error(f"Error resetting WRITE area status: {exc}", exc_info=True)
             return False
     
-    def reset_read_area_status(self) -> bool:
+    def reset_read_area_status(self, batch_no: int = 1) -> bool:
         """
-        Reset READ area status to 0 (for testing purposes).
+        Reset READ area status to 0 for a specific batch (for testing purposes).
         
         Normally this is done by PLC after preparing next data.
         
@@ -167,11 +235,12 @@ class PLCHandshakeService:
             True if successfully reset, False otherwise
         """
         try:
-            self._write_status_flag(self.READ_AREA_STATUS_ADDRESS, 0)
-            logger.info("✓ Reset READ area status (D6075=0)")
+            address = self._get_read_status_address(batch_no)
+            self._write_status_flag(address, 0)
+            logger.info("Reset READ area status batch %s (D%s=0)", batch_no, address)
             return True
         except Exception as exc:
-            logger.error(f"Error resetting READ area status: {exc}", exc_info=True)
+            logger.error(f"Error resetting READ area batch status: {exc}", exc_info=True)
             return False
     
     def reset_equipment_failure_status(self) -> bool:
@@ -183,12 +252,11 @@ class PLCHandshakeService:
         """
         try:
             self._write_status_flag(self.EQUIPMENT_FAILURE_STATUS_ADDRESS, 0)
-            logger.info("✓ Reset equipment failure status (D8022=0)")
+            logger.info("Reset equipment failure status (D8022=0)")
             return True
         except Exception as exc:
             logger.error(f"Error resetting equipment failure status: {exc}", exc_info=True)
             return False
-    
     def _read_status_flag(self, address: int) -> int:
         """
         Read a single status flag from PLC.
@@ -304,3 +372,4 @@ def get_handshake_service() -> PLCHandshakeService:
     if _handshake_service is None:
         _handshake_service = PLCHandshakeService()
     return _handshake_service
+

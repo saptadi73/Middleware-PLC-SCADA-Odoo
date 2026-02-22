@@ -8,7 +8,7 @@ Includes handshake logic to mark data as read after successful sync.
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -75,79 +75,113 @@ class PLCSyncService:
 
     async def sync_from_plc(self) -> Dict[str, Any]:
         """
-        Read data from PLC and update mo_batch if values changed.
+        Read data from all PLC READ batches (01..10) and update mo_batch if values changed.
 
         Returns:
-            Dict with sync results (updated count, errors, etc.)
+            Dict with sync summary.
         """
-        mo_id = None
         try:
-            # Read all data from PLC
-            plc_data = self.plc_read_service.read_batch_data()
+            processed_batches = 0
+            updated_batches = 0
+            failed_batches: List[Dict[str, Any]] = []
+            mo_ids: List[str] = []
+            first_mo_id: Optional[str] = None
 
-            # Extract MO_ID from PLC (handle None values from failed reads)
-            mo_id = plc_data.get("mo_id") or None
-            if mo_id:
-                mo_id = mo_id.strip() if isinstance(mo_id, str) else None
-            
-            if not mo_id:
+            with SessionLocal() as session:
+                for plc_batch_no in range(1, 11):
+                    try:
+                        plc_data = self.plc_read_service.read_batch_data(batch_no=plc_batch_no)
+                    except Exception as exc:
+                        failed_batches.append(
+                            {
+                                "batch_no": plc_batch_no,
+                                "error": f"Read error: {exc}",
+                            }
+                        )
+                        continue
+
+                    mo_id_raw = plc_data.get("mo_id") or None
+                    mo_id = mo_id_raw.strip() if isinstance(mo_id_raw, str) else None
+                    if not mo_id:
+                        continue
+
+                    processed_batches += 1
+                    mo_ids.append(mo_id)
+                    if first_mo_id is None:
+                        first_mo_id = mo_id
+
+                    # Prefer exact match by (batch_no, mo_id), fallback to mo_id only.
+                    result = session.execute(
+                        select(TableSmoBatch).where(
+                            TableSmoBatch.batch_no == plc_batch_no,  # type: ignore[arg-type]
+                            TableSmoBatch.mo_id == mo_id,
+                        )
+                    )
+                    batch = result.scalar_one_or_none()
+
+                    if not batch:
+                        result = session.execute(
+                            select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
+                        )
+                        batch = result.scalar_one_or_none()
+
+                    if not batch:
+                        failed_batches.append(
+                            {
+                                "batch_no": plc_batch_no,
+                                "mo_id": mo_id,
+                                "error": "MO batch not found in DB",
+                            }
+                        )
+                        # Data was still read from PLC. Mark this slot as read to avoid reprocessing loop.
+                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                        continue
+
+                    updated = await self._update_batch_if_changed(session, batch, plc_data)
+                    if updated:
+                        session.commit()
+                        updated_batches += 1
+                        logger.info(
+                            "Updated mo_batch for MO_ID=%s (batch_no=%s)",
+                            mo_id,
+                            plc_batch_no,
+                        )
+
+                    # Even if unchanged, slot has been processed.
+                    get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+
+            if processed_batches == 0:
                 return {
                     "success": False,
-                    "error": "No MO_ID found in PLC data",
+                    "error": "No MO_ID found in PLC data across all batches",
                     "mo_id": None,
+                    "updated": False,
+                    "processed_batches": 0,
+                    "updated_batches": 0,
+                    "failed_batches": failed_batches,
+                    "mo_ids": [],
                 }
 
-            # Find mo_batch record by mo_id
-            with SessionLocal() as session:
-                result = session.execute(
-                    select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
-                )
-                batch = result.scalar_one_or_none()
-
-                if not batch:
-                    return {
-                        "success": False,
-                        "error": f"MO batch not found for MO_ID: {mo_id}",
-                        "mo_id": mo_id,
-                    }
-
-                # Check if data has changed and update
-                updated = await self._update_batch_if_changed(
-                    session, batch, plc_data
-                )
-
-                if updated:
-                    session.commit()
-                    logger.info(f"Updated mo_batch for MO_ID: {mo_id}")
-                    
-                    # Mark READ area as read after successful sync
-                    handshake = get_handshake_service()
-                    handshake.mark_read_area_as_read()  # Set D6075 = 1
-                    
-                    return {
-                        "success": True,
-                        "updated": True,
-                        "mo_id": mo_id,
-                        "message": "Batch data updated successfully",
-                    }
-                else:
-                    # Even if no changes, still mark as read (we processed it)
-                    handshake = get_handshake_service()
-                    handshake.mark_read_area_as_read()  # Set D6075 = 1
-                    
-                    return {
-                        "success": True,
-                        "updated": False,
-                        "mo_id": mo_id,
-                        "message": "No changes detected, skip update",
-                    }
+            return {
+                "success": True,
+                "updated": updated_batches > 0,
+                "mo_id": first_mo_id,
+                "message": (
+                    f"Processed {processed_batches} batch(es), "
+                    f"updated {updated_batches} batch(es)"
+                ),
+                "processed_batches": processed_batches,
+                "updated_batches": updated_batches,
+                "failed_batches": failed_batches,
+                "mo_ids": mo_ids,
+            }
 
         except Exception as e:
             logger.error(f"Error syncing from PLC: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": str(e),
-                "mo_id": mo_id,
+                "mo_id": None,
             }
 
     async def sync_consumption_to_odoo(
@@ -224,64 +258,108 @@ class PLCSyncService:
 
     async def sync_from_plc_with_consumption(self) -> Dict[str, Any]:
         """
-        Read from PLC, update batch, dan sync consumption ke Odoo.
+        Read from all PLC READ batches, update DB, and sync consumption to Odoo.
 
-        Combined workflow yang:
-        1. Read data dari PLC
-        2. Update mo_batch table
-        3. Sync consumption ke Odoo
-        4. Mark done di Odoo jika manufacturing selesai
+        Combined workflow:
+        1. Read data from PLC batches 01..10
+        2. Update mo_batch table per batch
+        3. Sync consumption to Odoo per valid MO
+        4. Mark READ handshake per batch slot
 
         Returns:
-            Dict dengan combined results
+            Dict with combined summary
         """
-        mo_id = None
         try:
-            # Step 1: Read from PLC
-            plc_data = self.plc_read_service.read_batch_data()
+            processed_batches = 0
+            updated_batches = 0
+            synced_batches = 0
+            failed_batches: List[Dict[str, Any]] = []
+            first_mo_id: Optional[str] = None
 
-            mo_id = plc_data.get("mo_id", "").strip()
-            if not mo_id:
+            with SessionLocal() as session:
+                for plc_batch_no in range(1, 11):
+                    try:
+                        plc_data = self.plc_read_service.read_batch_data(batch_no=plc_batch_no)
+                    except Exception as exc:
+                        failed_batches.append(
+                            {
+                                "batch_no": plc_batch_no,
+                                "error": f"Read error: {exc}",
+                            }
+                        )
+                        continue
+
+                    mo_id_raw = plc_data.get("mo_id")
+                    mo_id = mo_id_raw.strip() if isinstance(mo_id_raw, str) else ""
+                    if not mo_id:
+                        continue
+
+                    processed_batches += 1
+                    if first_mo_id is None:
+                        first_mo_id = mo_id
+
+                    result = session.execute(
+                        select(TableSmoBatch).where(
+                            TableSmoBatch.batch_no == plc_batch_no,  # type: ignore[arg-type]
+                            TableSmoBatch.mo_id == mo_id,
+                        )
+                    )
+                    batch = result.scalar_one_or_none()
+                    if not batch:
+                        result = session.execute(
+                            select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
+                        )
+                        batch = result.scalar_one_or_none()
+
+                    if not batch:
+                        failed_batches.append(
+                            {
+                                "batch_no": plc_batch_no,
+                                "mo_id": mo_id,
+                                "error": "MO batch not found in DB",
+                            }
+                        )
+                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                        continue
+
+                    updated = await self._update_batch_if_changed(session, batch, plc_data)
+                    if updated:
+                        session.commit()
+                        updated_batches += 1
+
+                    consumption_result = await self.sync_consumption_to_odoo(batch)
+                    if consumption_result.get("success"):
+                        synced_batches += 1
+                    else:
+                        failed_batches.append(
+                            {
+                                "batch_no": plc_batch_no,
+                                "mo_id": mo_id,
+                                "error": consumption_result.get("error", "Consumption sync failed"),
+                            }
+                        )
+
+                    get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+
+            if processed_batches == 0:
                 return {
                     "success": False,
-                    "error": "No MO_ID found in PLC data",
+                    "error": "No MO_ID found in PLC data across all batches",
                     "mo_id": None,
+                    "processed_batches": 0,
+                    "updated_batches": 0,
+                    "synced_batches": 0,
+                    "failed_batches": failed_batches,
                 }
 
-            # Step 2: Update mo_batch
-            with SessionLocal() as session:
-                result = session.execute(
-                    select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
-                )
-                batch = result.scalar_one_or_none()
-
-                if not batch:
-                    return {
-                        "success": False,
-                        "error": f"MO batch not found for MO_ID: {mo_id}",
-                        "mo_id": mo_id,
-                    }
-
-                # Update batch dari PLC data
-                updated = await self._update_batch_if_changed(
-                    session, batch, plc_data
-                )
-
-                if updated:
-                    session.commit()
-                    logger.info(f"Updated mo_batch for MO_ID: {mo_id}")
-
-                # Step 3: Sync consumption ke Odoo
-                # Menggunakan asyncio.run karena function ini sync tapi
-                # consumption service adalah async
-                consumption_result = await self.sync_consumption_to_odoo(batch)
-
-                return {
-                    "success": True,
-                    "mo_id": mo_id,
-                    "batch_updated": updated,
-                    "consumption_sync": consumption_result,
-                }
+            return {
+                "success": True,
+                "mo_id": first_mo_id,
+                "processed_batches": processed_batches,
+                "updated_batches": updated_batches,
+                "synced_batches": synced_batches,
+                "failed_batches": failed_batches,
+            }
 
         except Exception as e:
             logger.error(
@@ -291,7 +369,7 @@ class PLCSyncService:
             return {
                 "success": False,
                 "error": str(e),
-                "mo_id": mo_id,
+                "mo_id": None,
             }
 
     async def _update_batch_if_changed(
@@ -322,10 +400,13 @@ class PLCSyncService:
 
         changed = False
 
-        # Support both old and new payload shapes from PLCReadService.
-        # Current read_batch_data() returns:
+        # Expected payload shape from PLCReadService.read_batch_data(batch_no):
+        # - batch_no
+        # - mo_id
         # - quantity
-        # - status: {manufacturing, operation}
+        # - silos: {a..m: {id, consumption}}
+        # - liquids: {lq114, lq115}
+        # - status: {manufacturing, operation, read}
         # - weight_finished_good
         status_payload = plc_data.get("status")
         status_obj = status_payload if isinstance(status_payload, dict) else {}

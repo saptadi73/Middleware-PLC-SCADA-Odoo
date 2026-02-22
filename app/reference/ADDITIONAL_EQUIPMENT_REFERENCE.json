@@ -1,0 +1,107 @@
+{
+    "meta": {
+        "name": "Additional Equipment Reference - Manual Material Weighing",
+        "description": "Reference data untuk pembacaan manual material weighing/raw material consumption dari PLC SCADA",
+        "purpose": "TASK 5 - Manual Material Consumption Tracking (separate from equipment failure monitoring)",
+        "memory_area": "D9000-D9011 (allocated to avoid conflict with Equipment Failure D8000-D8022)",
+        "created_date": "2025-02-22",
+        "version": "2.0"
+    },
+    "ADDITIONAL": [
+        {
+            "No": 1,
+            "Informasi": "BATCH",
+            "Data Type": "REAL",
+            "Sample": 10,
+            "scale": 1,
+            "DM": "D9000",
+            "VALUE": 10,
+            "description": "Batch/lot number for material weighing entry"
+        },
+        {
+            "No": 2,
+            "Informasi": "NO-MO",
+            "Data Type": "ASCII",
+            "Sample": "WH/MO/00002",
+            "DM": "D9001-D9008",
+            "VALUE": "WH/MO/00002",
+            "description": "Manufacturing Order ID (8 chars, 4 words)"
+        },
+        {
+            "No": 3,
+            "Informasi": "NO-Product",
+            "Data Type": "REAL",
+            "Sample": 23,
+            "scale": 1,
+            "DM": "D9009",
+            "VALUE": 23,
+            "description": "Product template ID in Odoo"
+        },
+        {
+            "No": 4,
+            "Informasi": "Consumption",
+            "Data Type": "REAL",
+            "Sample": 82500,
+            "scale": 100,
+            "DM": "D9010",
+            "VALUE": 825,
+            "description": "Material consumption quantity (scaled by 100)"
+        },
+        {
+            "No": 5,
+            "Informasi": "status_manual_weigh_read",
+            "Data Type": "BOOLEAN",
+            "Sample": "0=not yet read, 1=have been read",
+            "DM": "D9011",
+            "VALUE": 0,
+            "description": "Handshake flag: 0=not read by Middleware, 1=read by Middleware"
+        }
+    ],
+    "mapping_structure": {
+        "batch_number": {
+            "field_name": "batch_number",
+            "data_type": "REAL",
+            "plc_address": "D9000",
+            "description": "Batch/lot identifier for manual weighing",
+            "sample_values": [1, 2, 10, 100]
+        },
+        "mo_id": {
+            "field_name": "mo_id",
+            "data_type": "ASCII",
+            "plc_address": "D9001-D9008",
+            "description": "Manufacturing Order ID from Odoo",
+            "sample_values": ["WH/MO/00001", "MO/2026/0001"]
+        },
+        "product_tmpl_id": {
+            "field_name": "product_tmpl_id",
+            "data_type": "REAL",
+            "plc_address": "D9009",
+            "description": "Product template ID in Odoo (links to BoM)",
+            "sample_values": [1, 23, 45, 112]
+        },
+        "consumption_qty": {
+            "field_name": "consumption_qty",
+            "data_type": "REAL",
+            "plc_address": "D9010",
+            "scale": 100,
+            "description": "Material consumption quantity (scaled for PLC integer precision)",
+            "sample_values": [825, 600, 375, 240.25],
+            "formula": "PLC_value / 100 = actual_qty"
+        },
+        "handshake_flag": {
+            "field_name": "status_manual_weigh_read",
+            "data_type": "BOOLEAN",
+            "plc_address": "D9011",
+            "description": "Bidirectional handshake: Middleware→PLC marks as read after processing",
+            "semantics": "0=pending read, 1=read by Middleware"
+        }
+    },
+    "notes": [
+        "Manual Material Weighing data is entered by operators at weigh scale station in PLC",
+        "Data includes MO ID, Product ID, and actual consumption quantity",
+        "Handshake flag D9011 prevents duplicate consumption entries in Odoo",
+        "Memory area D9000-D9011 is SEPARATE from Equipment Failure (D8000-D8022)",
+        "TASK 5 reads this area periodically and syncs consumption data to Odoo",
+        "Consumption quantity must be scaled/100 when transmitted to PLC (e.g., 825 in PLC = 8.25 kg actual)"
+    ]
+}
