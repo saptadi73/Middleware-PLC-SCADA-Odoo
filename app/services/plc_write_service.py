@@ -8,7 +8,9 @@ import logging
 import math
 import os
 import re
+import socket
 import struct
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -348,29 +350,45 @@ class PLCWriteService:
             address: DM address (e.g., 7000)
             values: List of 16-bit integer values
         """
-        with FinsUdpClient(
-            ip=self.settings.plc_ip,
-            port=self.settings.plc_port,
-            timeout_sec=self.settings.plc_timeout_sec,
-        ) as client:
-            # Build FINS write frame
-            frame = build_memory_write_frame(
-                area="DM",
-                address=address,
-                values=values,
-                client_node=self.settings.client_node,
-                plc_node=self.settings.plc_node,
-                sid=0x00,
-            )
-            
-            # Send frame
-            client.send_raw_hex(frame.hex())
-            
-            # Receive response
-            response = client.recv()
-            
-            # Parse response (raises exception on error)
-            parse_memory_write_response(response.raw)
+        max_attempts = 3
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with FinsUdpClient(
+                    ip=self.settings.plc_ip,
+                    port=self.settings.plc_port,
+                    timeout_sec=self.settings.plc_timeout_sec,
+                ) as client:
+                    frame = build_memory_write_frame(
+                        area="DM",
+                        address=address,
+                        values=values,
+                        client_node=self.settings.client_node,
+                        plc_node=self.settings.plc_node,
+                        sid=0x00,
+                    )
+
+                    client.send_raw_hex(frame.hex())
+                    response = client.recv()
+                    parse_memory_write_response(response.raw)
+                return
+            except (TimeoutError, socket.timeout) as exc:
+                last_error = exc
+                if attempt < max_attempts:
+                    logger.warning(
+                        "PLC write timeout at D%s (attempt %s/%s). Retrying...",
+                        address,
+                        attempt,
+                        max_attempts,
+                    )
+                    time.sleep(0.1)
+                    continue
+                break
+
+        raise RuntimeError(
+            f"PLC write timeout at D{address} after {max_attempts} attempts"
+        ) from last_error
     
     def write_mo_batch_to_plc(
         self,

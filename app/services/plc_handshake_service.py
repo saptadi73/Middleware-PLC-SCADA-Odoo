@@ -24,6 +24,8 @@ Equipment Failure Handshaking (D8022):
 import json
 import logging
 from pathlib import Path
+import socket
+import time
 from typing import Literal, Optional
 
 from app.core.config import get_settings
@@ -197,27 +199,48 @@ class PLCHandshakeService:
         Returns:
             0 or 1 (status flag value)
         """
-        with FinsUdpClient(
-            ip=self.settings.plc_ip,
-            port=self.settings.plc_port,
-            timeout_sec=self.settings.plc_timeout_sec,
-        ) as client:
-            # Build read request for 1 word
-            request = MemoryReadRequest(area="DM", address=address, count=1)
-            frame = build_memory_read_frame(request, self.settings.client_node, self.settings.plc_node, sid=0x00)
-            
-            # Send and receive
-            client.send_raw_hex(frame.hex())
-            response = client.recv()
-            
-            # Parse response
-            words = parse_memory_read_response(response.raw, expected_count=1)
-            
-            if not words:
-                raise ValueError(f"No data returned from address D{address}")
-            
-            # Boolean value: 0 or 1
-            return 1 if words[0] != 0 else 0
+        max_attempts = 3
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with FinsUdpClient(
+                    ip=self.settings.plc_ip,
+                    port=self.settings.plc_port,
+                    timeout_sec=self.settings.plc_timeout_sec,
+                ) as client:
+                    request = MemoryReadRequest(area="DM", address=address, count=1)
+                    frame = build_memory_read_frame(
+                        request,
+                        self.settings.client_node,
+                        self.settings.plc_node,
+                        sid=0x00,
+                    )
+
+                    client.send_raw_hex(frame.hex())
+                    response = client.recv()
+                    words = parse_memory_read_response(response.raw, expected_count=1)
+
+                    if not words:
+                        raise ValueError(f"No data returned from address D{address}")
+
+                    return 1 if words[0] != 0 else 0
+            except (TimeoutError, socket.timeout) as exc:
+                last_error = exc
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Handshake read timeout at D%s (attempt %s/%s). Retrying...",
+                        address,
+                        attempt,
+                        max_attempts,
+                    )
+                    time.sleep(0.1)
+                    continue
+                break
+
+        raise RuntimeError(
+            f"Handshake read timeout at D{address} after {max_attempts} attempts"
+        ) from last_error
     
     def _write_status_flag(self, address: int, value: int) -> None:
         """
@@ -230,25 +253,45 @@ class PLCHandshakeService:
         if value not in (0, 1):
             raise ValueError(f"Status flag must be 0 or 1, got {value}")
         
-        with FinsUdpClient(
-            ip=self.settings.plc_ip,
-            port=self.settings.plc_port,
-            timeout_sec=self.settings.plc_timeout_sec,
-        ) as client:
-            # Build write frame for 1 word
-            frame = build_memory_write_frame(
-                area="DM",
-                address=address,
-                values=[value],
-                client_node=self.settings.client_node,
-                plc_node=self.settings.plc_node,
-                sid=0x00,
-            )
-            
-            # Send and verify
-            client.send_raw_hex(frame.hex())
-            response = client.recv()
-            parse_memory_write_response(response.raw)
+        max_attempts = 3
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with FinsUdpClient(
+                    ip=self.settings.plc_ip,
+                    port=self.settings.plc_port,
+                    timeout_sec=self.settings.plc_timeout_sec,
+                ) as client:
+                    frame = build_memory_write_frame(
+                        area="DM",
+                        address=address,
+                        values=[value],
+                        client_node=self.settings.client_node,
+                        plc_node=self.settings.plc_node,
+                        sid=0x00,
+                    )
+
+                    client.send_raw_hex(frame.hex())
+                    response = client.recv()
+                    parse_memory_write_response(response.raw)
+                return
+            except (TimeoutError, socket.timeout) as exc:
+                last_error = exc
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Handshake write timeout at D%s (attempt %s/%s). Retrying...",
+                        address,
+                        attempt,
+                        max_attempts,
+                    )
+                    time.sleep(0.1)
+                    continue
+                break
+
+        raise RuntimeError(
+            f"Handshake write timeout at D{address} after {max_attempts} attempts"
+        ) from last_error
 
 
 # Singleton instance
