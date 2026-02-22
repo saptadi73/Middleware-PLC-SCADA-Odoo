@@ -102,13 +102,20 @@ def _upsert_batch(db: Session, mo_data: Dict[str, Any], batch_no: int) -> TableS
     return batch
 
 
-def sync_mo_list_to_db(db: Session, mo_list: Iterable[Dict[str, Any]]) -> int:
+def sync_mo_list_to_db(
+    db: Session,
+    mo_list: Iterable[Dict[str, Any]],
+    commit: bool = True,
+) -> int:
     count = 0
     for index, mo_data in enumerate(mo_list, start=1):
         _upsert_batch(db, mo_data, index)
         count += 1
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return count
 
 

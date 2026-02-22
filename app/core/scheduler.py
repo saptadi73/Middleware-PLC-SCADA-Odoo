@@ -78,11 +78,12 @@ async def auto_sync_mo_task():
             return
         
         logger.info("[TASK 1] ? Table mo_batch is empty. Fetching new batches from Odoo...")
-        logger.debug(f"[TASK 1-DEBUG-3] Odoo fetch params: limit={settings.sync_batch_limit}, offset=0")
+        odoo_fetch_limit = settings.sync_batch_limit
+        logger.debug(f"[TASK 1-DEBUG-3] Odoo fetch params: limit={odoo_fetch_limit}, offset=0")
         
         # 2. Fetch dari Odoo
         payload = await fetch_mo_list_detailed(
-            limit=settings.sync_batch_limit,
+            limit=odoo_fetch_limit,
             offset=0
         )
         
@@ -101,23 +102,48 @@ async def auto_sync_mo_task():
         for idx, mo in enumerate(mo_list, 1):
             logger.debug(f"[TASK 1-DEBUG-6.{idx}] MO data: mo_id={mo.get('id')}, name={mo.get('name')}")
         
-        # 3. Sync ke database
+        max_plc_slots = 30
+        if len(mo_list) > max_plc_slots:
+            logger.warning(
+                "[TASK 1] Odoo returned %s MO(s), but PLC supports max %s slots. "
+                "Only first %s MO(s) will be processed this cycle.",
+                len(mo_list),
+                max_plc_slots,
+                max_plc_slots,
+            )
+            mo_list = mo_list[:max_plc_slots]
+
+        # 3. Sync ke database (deferred commit)
         logger.debug("[TASK 1-DEBUG-7] Syncing to mo_batch database...")
         db = SessionLocal()
         try:
-            sync_mo_list_to_db(db, mo_list)
-            logger.info(f"[TASK 1] ? Database sync completed: {len(mo_list)} MO batches")
-            logger.debug("[TASK 1-DEBUG-8] Database sync successful")
+            synced = sync_mo_list_to_db(db, mo_list, commit=False)
+            logger.info(
+                f"[TASK 1] ? Database stage completed (not committed yet): {synced} MO batches"
+            )
+            logger.debug("[TASK 1-DEBUG-8] Database stage successful")
             
             # 4. WRITE batch data ke PLC memory
             logger.debug("[TASK 1-DEBUG-9] Starting PLC write operation...")
             from app.services.mo_batch_service import write_mo_batch_queue_to_plc
             
-            written = write_mo_batch_queue_to_plc(db, start_slot=1, limit=len(mo_list))
+            written = write_mo_batch_queue_to_plc(db, start_slot=1, limit=synced)
             logger.info(f"[TASK 1] ? PLC write completed: {written} batches written to PLC")
             logger.debug(f"[TASK 1-DEBUG-10] Batches written count: {written}")
-            logger.info(f"[TASK 1] ? Auto-sync completed: {len(mo_list)} MO batches synced & written to PLC")
+            if written != synced:
+                raise RuntimeError(
+                    f"Partial PLC write detected (staged={synced}, written={written}). "
+                    "Rolling back DB stage to avoid queue inconsistency."
+                )
+
+            db.commit()
+            logger.info(
+                f"[TASK 1] ? Auto-sync committed successfully: staged={synced}, written={written}"
+            )
             
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
             
