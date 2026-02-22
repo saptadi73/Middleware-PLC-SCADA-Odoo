@@ -10,7 +10,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, cast
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import create_engine, desc, text, select
@@ -519,8 +519,8 @@ async def monitor_batch_health_task():
             for batch in active_batches:
                 batch_no = batch.batch_no
                 mo_id = batch.mo_id
-                last_read = batch.last_read_from_plc
-                status_operation = bool(batch.status_operation)
+                status_operation_raw = batch.status_operation
+                status_operation = status_operation_raw is True
 
                 if status_operation:
                     warning_batches += 1
@@ -531,7 +531,8 @@ async def monitor_batch_health_task():
                         mo_id,
                     )
 
-                if last_read is None:
+                last_read_raw = batch.last_read_from_plc
+                if not isinstance(last_read_raw, datetime):
                     warning_batches += 1
                     logger.warning(
                         "[TASK 4] Batch has no PLC read timestamp yet "
@@ -541,7 +542,9 @@ async def monitor_batch_health_task():
                     )
                     continue
 
-                if last_read.tzinfo is None:
+                last_read = cast(datetime, last_read_raw)
+
+                if getattr(last_read, "tzinfo", None) is None:
                     last_read = last_read.replace(tzinfo=timezone.utc)
 
                 age = now_utc - last_read
