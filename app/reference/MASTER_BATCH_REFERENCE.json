@@ -3,7 +3,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 1,
             "scale": 1,
             "DM": "D7000"
@@ -311,7 +311,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 2,
             "scale": 1,
             "DM": "D7100"
@@ -619,7 +619,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 3,
             "scale": 1,
             "DM": "D7200"
@@ -675,7 +675,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": 2
+            "DM": "D7230"
         },
         {
             "No": 9,
@@ -927,7 +927,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 4,
             "scale": 1,
             "DM": "D7300"
@@ -983,7 +983,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": "D7240"
+            "DM": "D7330"
         },
         {
             "No": 9,
@@ -1235,7 +1235,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 5,
             "scale": 1,
             "DM": "D7400"
@@ -1291,7 +1291,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": "D7310"
+            "DM": "D7430"
         },
         {
             "No": 9,
@@ -1543,7 +1543,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 6,
             "scale": 1,
             "DM": "D7500"
@@ -1599,7 +1599,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": "D7380"
+            "DM": "D7530"
         },
         {
             "No": 9,
@@ -1851,7 +1851,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 7,
             "scale": 1,
             "DM": "D7600"
@@ -1907,7 +1907,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": "D7450"
+            "DM": "D7630"
         },
         {
             "No": 9,
@@ -2159,7 +2159,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 8,
             "scale": 1,
             "DM": "D7700"
@@ -2215,7 +2215,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": "D7520"
+            "DM": "D7730"
         },
         {
             "No": 9,
@@ -2467,7 +2467,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 9,
             "scale": 1,
             "DM": "D7800"
@@ -2523,7 +2523,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": "D7590"
+            "DM": "D7830"
         },
         {
             "No": 9,
@@ -2775,7 +2775,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 10,
             "scale": 1,
             "DM": "D7900"
@@ -2831,7 +2831,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": "D7660"
+            "DM": "D7930"
         },
         {
             "No": 9,

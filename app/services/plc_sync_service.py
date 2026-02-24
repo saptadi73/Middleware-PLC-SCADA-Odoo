@@ -7,6 +7,7 @@ Includes handshake logic to mark data as read after successful sync.
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -73,6 +74,21 @@ class PLCSyncService:
         )
         return None
 
+    def _normalize_mo_id(self, raw_value: Any) -> Optional[str]:
+        """Normalize MO ID from PLC and keep only valid identifier format."""
+        if not isinstance(raw_value, str):
+            return None
+
+        normalized = raw_value.strip().upper()
+        if not normalized:
+            return None
+
+        if not re.match(r"^[A-Z0-9]+/[A-Z0-9]+/[A-Z0-9-]+$", normalized):
+            logger.warning("Ignoring invalid MO_ID format from PLC: %r", raw_value)
+            return None
+
+        return normalized
+
     async def sync_from_plc(self) -> Dict[str, Any]:
         """
         Read data from all PLC READ batches (01..10) and update mo_batch if values changed.
@@ -101,7 +117,7 @@ class PLCSyncService:
                         continue
 
                     mo_id_raw = plc_data.get("mo_id") or None
-                    mo_id = mo_id_raw.strip() if isinstance(mo_id_raw, str) else None
+                    mo_id = self._normalize_mo_id(mo_id_raw)
                     if not mo_id:
                         continue
 
@@ -290,7 +306,7 @@ class PLCSyncService:
                         continue
 
                     mo_id_raw = plc_data.get("mo_id")
-                    mo_id = mo_id_raw.strip() if isinstance(mo_id_raw, str) else ""
+                    mo_id = self._normalize_mo_id(mo_id_raw) or ""
                     if not mo_id:
                         continue
 

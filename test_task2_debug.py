@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.db.base import Base
 from app.models.tablesmo_batch import TableSmoBatch
+from app.services.plc_read_service import get_plc_read_service
 from app.services.plc_sync_service import get_plc_sync_service
 from app.services.odoo_consumption_service import get_consumption_service
 
@@ -76,15 +77,42 @@ def get_active_batches(engine):
         db.close()
 
 
-def read_plc_data():
+async def read_plc_data():
     """Read data from PLC."""
     print("\n" + "="*80)
     print("STEP 2: Read Data from PLC")
     print("="*80)
     
     try:
+        read_service = get_plc_read_service()
+        all_fields = read_service.read_all_fields()
+
+        print("PLC raw READ fields (non-empty):")
+        non_empty = 0
+        for key, value in all_fields.items():
+            if value not in (None, "", 0, 0.0, False):
+                print(f"  - {key}: {value}")
+                non_empty += 1
+
+        if non_empty == 0:
+            print("  (all fields empty/zero/None)")
+
+        print("\nKey READ fields snapshot:")
+        for key in [
+            "NO-MO",
+            "status manufaturing",
+            "Status Operation",
+            "weight_finished_good",
+            "SILO ID 101 Consumption",
+            "SILO ID 102 Consumption",
+            "SILO ID 103 Consumption",
+            "LQ ID 114 Consumption",
+            "LQ ID 115 Consumption",
+        ]:
+            print(f"  - {key}: {all_fields.get(key)}")
+
         plc_service = get_plc_sync_service()
-        result = asyncio.run(plc_service.sync_from_plc())
+        result = await plc_service.sync_from_plc()
         
         print(f"PLC sync result:")
         print(f"  - success: {result.get('success')}")
@@ -196,7 +224,7 @@ async def main():
             return
         
         # Step 2: Read PLC
-        plc_result = read_plc_data()
+        plc_result = await read_plc_data()
         
         if not plc_result.get("success"):
             print(f"\n✗ PLC read failed: {plc_result.get('error')}")

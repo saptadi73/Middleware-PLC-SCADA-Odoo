@@ -42,6 +42,24 @@ class PLCWriteService:
             self.mapping = json.load(f)
         
         logger.info(f"Loaded PLC memory mapping: {len(self.mapping)} batches")
+
+    def _resolve_batch_name(self, batch_name: str) -> str:
+        """Resolve mapping key for batch name (supports BATCHxx and WRITE_BATCHxx)."""
+        normalized = str(batch_name).strip().upper()
+
+        candidates = [normalized]
+        if normalized.startswith("WRITE_"):
+            candidates.append(normalized.replace("WRITE_", "", 1))
+        else:
+            candidates.append(f"WRITE_{normalized}")
+
+        for candidate in candidates:
+            if candidate in self.mapping:
+                return candidate
+
+        raise ValueError(
+            f"Batch {batch_name} not found in MASTER_BATCH_REFERENCE mapping"
+        )
     
     def _parse_dm_address(self, dm_str: str) -> tuple[int, int]:
         """
@@ -81,10 +99,11 @@ class PLCWriteService:
         return raw_number
 
     def _build_silo_field_maps(self, batch_name: str) -> tuple[Dict[int, str], Dict[int, str]]:
+        resolved_batch_name = self._resolve_batch_name(batch_name)
         id_fields: Dict[int, str] = {}
         consumption_fields: Dict[int, str] = {}
 
-        for item in self.mapping.get(batch_name, []):
+        for item in self.mapping.get(resolved_batch_name, []):
             info = str(item.get("Informasi") or "")
             info_upper = info.upper()
             if "SILO" not in info_upper:
@@ -230,18 +249,17 @@ class PLCWriteService:
             field_name: Informasi field (e.g., "NO-MO", "SILO ID 101")
             value: Nilai yang akan ditulis
         """
-        if batch_name not in self.mapping:
-            raise ValueError(f"Batch {batch_name} not found in mapping")
+        resolved_batch_name = self._resolve_batch_name(batch_name)
         
         # Find field definition
         field_def = None
-        for item in self.mapping[batch_name]:
+        for item in self.mapping[resolved_batch_name]:
             if item["Informasi"] == field_name:
                 field_def = item
                 break
         
         if not field_def:
-            raise ValueError(f"Field {field_name} not found in {batch_name}")
+            raise ValueError(f"Field {field_name} not found in {resolved_batch_name}")
         
         # Parse address
         dm_str = field_def["DM"]
@@ -304,8 +322,7 @@ class PLCWriteService:
                 ...
             })
         """
-        if batch_name not in self.mapping:
-            raise ValueError(f"Batch {batch_name} not found in MASTER_BATCH_REFERENCE mapping")
+        resolved_batch_name = self._resolve_batch_name(batch_name)
         
         # Handshake check: Verify PLC has read previous batch
         if not skip_handshake_check:
@@ -314,46 +331,46 @@ class PLCWriteService:
             
             if not plc_has_read:
                 logger.warning(
-                    f"[{batch_name}] Handshake check failed: PLC hasn't read previous batch yet (D7076=0). "
+                    f"[{resolved_batch_name}] Handshake check failed: PLC hasn't read previous batch yet (D7076=0). "
                     f"Skipping write to prevent data overwrite. PLC will set D7076=1 when ready."
                 )
                 raise RuntimeError(
-                    f"Cannot write {batch_name}: PLC handshake not ready (D7076=0). "
+                    f"Cannot write {resolved_batch_name}: PLC handshake not ready (D7076=0). "
                     f"Wait for PLC to read current batch first."
                 )
             
-            logger.info(f"[{batch_name}] Handshake check passed: PLC ready for new batch (D7076=1)")
+            logger.info(f"[{resolved_batch_name}] Handshake check passed: PLC ready for new batch (D7076=1)")
         
         success_count = 0
         error_count = 0
         skipped_count = 0
         
-        logger.info(f"[{batch_name}] Writing {len(data)} fields to PLC...")
+        logger.info(f"[{resolved_batch_name}] Writing {len(data)} fields to PLC...")
         
         for field_name, value in data.items():
             try:
                 # Find field in mapping
                 field_def = None
-                for item in self.mapping[batch_name]:
+                for item in self.mapping[resolved_batch_name]:
                     if item["Informasi"] == field_name:
                         field_def = item
                         break
                 
                 if not field_def:
                     logger.warning(
-                        f"[{batch_name}] Field '{field_name}' not found in MASTER_BATCH_REFERENCE mapping. "
-                        f"Available fields: {[item['Informasi'] for item in self.mapping[batch_name]]}"
+                        f"[{resolved_batch_name}] Field '{field_name}' not found in MASTER_BATCH_REFERENCE mapping. "
+                        f"Available fields: {[item['Informasi'] for item in self.mapping[resolved_batch_name]]}"
                     )
                     skipped_count += 1
                     continue
                 
                 # Write field
-                self.write_field(batch_name, field_name, value)
+                self.write_field(resolved_batch_name, field_name, value)
                 success_count += 1
                 
             except Exception as exc:
                 logger.error(
-                    f"[{batch_name}] Error writing field '{field_name}' with value {value}: {exc}",
+                    f"[{resolved_batch_name}] Error writing field '{field_name}' with value {value}: {exc}",
                     exc_info=True
                 )
                 error_count += 1
@@ -363,10 +380,10 @@ class PLCWriteService:
         if not skip_handshake_check and error_count == 0:
             handshake = get_handshake_service()
             handshake.reset_write_area_status()  # Set D7076 = 0
-            logger.info(f"[{batch_name}] Reset handshake flag (D7076=0) - waiting for PLC to read")
+            logger.info(f"[{resolved_batch_name}] Reset handshake flag (D7076=0) - waiting for PLC to read")
         
         logger.info(
-            f"[{batch_name}] Write completed: "
+            f"[{resolved_batch_name}] Write completed: "
             f"✓ {success_count} success, "
             f"⚠ {skipped_count} skipped, "
             f"✗ {error_count} errors"
@@ -374,7 +391,7 @@ class PLCWriteService:
         
         if error_count > 0:
             raise RuntimeError(
-                f"Failed to write {batch_name}: {error_count} field(s) failed. "
+                f"Failed to write {resolved_batch_name}: {error_count} field(s) failed. "
                 f"Check logs for details."
             )
     
@@ -455,6 +472,7 @@ class PLCWriteService:
             raise ValueError(f"Batch number must be 1-30, got {batch_number}")
         
         batch_name = f"BATCH{batch_number:02d}"
+        resolved_batch_name = self._resolve_batch_name(batch_name)
         
         # Build PLC write data following MASTER_BATCH_REFERENCE.json mapping
         # Truncate strings to 16 chars for ASCII fields (8 words max)
@@ -470,7 +488,7 @@ class PLCWriteService:
         }
         
         # Map silos (A-M -> 101-113)
-        silo_id_fields, consumption_fields = self._build_silo_field_maps(batch_name)
+        silo_id_fields, consumption_fields = self._build_silo_field_maps(resolved_batch_name)
         silo_letters = "abcdefghijklm"
         for idx, letter in enumerate(silo_letters):
             silo_number = 101 + idx
@@ -482,7 +500,7 @@ class PLCWriteService:
                 plc_data[silo_id_field] = silo_value
                 logger.debug(f"Set {silo_id_field} = {silo_value}")
             else:
-                logger.debug(f"Silo ID field not found for {silo_number} in {batch_name}")
+                logger.debug(f"Silo ID field not found for {silo_number} in {resolved_batch_name}")
 
             # Silo Consumption field name from reference (e.g., "SILO ID 101 Consumption")
             consumption_field = consumption_fields.get(silo_number)
@@ -491,11 +509,11 @@ class PLCWriteService:
                 plc_data[consumption_field] = float(consumption_value) if consumption_value else 0
                 logger.debug(f"Set {consumption_field} = {plc_data[consumption_field]}")
             else:
-                logger.debug(f"Silo consumption field not found for {silo_number} in {batch_name}")
+                logger.debug(f"Silo consumption field not found for {silo_number} in {resolved_batch_name}")
         
         # Write status fields (Note: field names must match MASTER_BATCH_REFERENCE exactly)
         # Check mapping for actual field names
-        for item in self.mapping.get(batch_name, []):
+        for item in self.mapping.get(resolved_batch_name, []):
             info = item.get("Informasi", "").lower()
             
             if "status" in info and "manufacturing" in info:
@@ -512,13 +530,13 @@ class PLCWriteService:
         
         # Write to PLC
         self.write_batch(
-            batch_name,
+            resolved_batch_name,
             plc_data,
             skip_handshake_check=skip_handshake_check,
         )
         
         logger.info(
-            f"✓ MO batch data written to PLC {batch_name}: "
+            f"✓ MO batch data written to PLC {resolved_batch_name}: "
             f"mo_id={mo_batch_data.get('mo_id')}, "
             f"batch={batch_number}/30, "
             f"fields={len(plc_data)}"

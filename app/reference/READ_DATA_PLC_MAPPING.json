@@ -3,7 +3,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 1,
             "scale": 1,
             "DM": "D6000"
@@ -311,7 +311,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 2,
             "scale": 1,
             "DM": "D6100"
@@ -619,7 +619,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 3,
             "scale": 1,
             "DM": "D6200"
@@ -675,7 +675,7 @@
             "Data Type": "INT",
             "Sample": 102,
             "scale": 1,
-            "DM": 2
+            "DM": "D6230"
         },
         {
             "No": 9,
@@ -683,7 +683,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6230-6231"
+            "DM": "D6231-6232"
         },
         {
             "No": 10,
@@ -691,7 +691,7 @@
             "Data Type": "INT",
             "Sample": 103,
             "scale": 1,
-            "DM": "D6232"
+            "DM": "D6233"
         },
         {
             "No": 11,
@@ -699,7 +699,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6233-6234"
+            "DM": "D6234-6235"
         },
         {
             "No": 12,
@@ -707,7 +707,7 @@
             "Data Type": "INT",
             "Sample": 104,
             "scale": 1,
-            "DM": "D6235"
+            "DM": "D6236"
         },
         {
             "No": 13,
@@ -715,7 +715,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6236-6237"
+            "DM": "D6237-6238"
         },
         {
             "No": 14,
@@ -723,7 +723,7 @@
             "Data Type": "INT",
             "Sample": 105,
             "scale": 1,
-            "DM": "D6238"
+            "DM": "D6239"
         },
         {
             "No": 15,
@@ -731,7 +731,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6239-6240"
+            "DM": "D6240-6241"
         },
         {
             "No": 16,
@@ -739,7 +739,7 @@
             "Data Type": "INT",
             "Sample": 106,
             "scale": 1,
-            "DM": "D6241"
+            "DM": "D6242"
         },
         {
             "No": 17,
@@ -747,7 +747,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6242-6243"
+            "DM": "D6243-6244"
         },
         {
             "No": 18,
@@ -755,7 +755,7 @@
             "Data Type": "INT",
             "Sample": 107,
             "scale": 1,
-            "DM": "D6244"
+            "DM": "D6245"
         },
         {
             "No": 19,
@@ -763,7 +763,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6245-6246"
+            "DM": "D6246-6247"
         },
         {
             "No": 20,
@@ -771,7 +771,7 @@
             "Data Type": "INT",
             "Sample": 108,
             "scale": 1,
-            "DM": "D6247"
+            "DM": "D6248"
         },
         {
             "No": 21,
@@ -779,7 +779,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6248-6249"
+            "DM": "D6249-6250"
         },
         {
             "No": 22,
@@ -787,7 +787,7 @@
             "Data Type": "INT",
             "Sample": 109,
             "scale": 1,
-            "DM": "D6250"
+            "DM": "D6251"
         },
         {
             "No": 23,
@@ -795,7 +795,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6251-6252"
+            "DM": "D6252-6253"
         },
         {
             "No": 24,
@@ -803,7 +803,7 @@
             "Data Type": "INT",
             "Sample": 110,
             "scale": 1,
-            "DM": "D6253"
+            "DM": "D6254"
         },
         {
             "No": 25,
@@ -811,7 +811,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6254-6255"
+            "DM": "D6255-6256"
         },
         {
             "No": 26,
@@ -819,7 +819,7 @@
             "Data Type": "INT",
             "Sample": 111,
             "scale": 1,
-            "DM": "D6256"
+            "DM": "D6257"
         },
         {
             "No": 27,
@@ -827,7 +827,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6257-6258"
+            "DM": "D6258-6259"
         },
         {
             "No": 28,
@@ -835,7 +835,7 @@
             "Data Type": "INT",
             "Sample": 112,
             "scale": 1,
-            "DM": "D6259"
+            "DM": "D6260"
         },
         {
             "No": 29,
@@ -843,7 +843,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6260-6261"
+            "DM": "D6261-6262"
         },
         {
             "No": 30,
@@ -851,7 +851,7 @@
             "Data Type": "INT",
             "Sample": 113,
             "scale": 1,
-            "DM": "D6262"
+            "DM": "D6263"
         },
         {
             "No": 31,
@@ -859,7 +859,7 @@
             "Data Type": "REAL",
             "Sample": 20045,
             "scale": 100,
-            "DM": "D6263-6264"
+            "DM": "D6264-6265"
         },
         {
             "No": 32,
@@ -867,7 +867,7 @@
             "Data Type": "INT",
             "Sample": 114,
             "scale": 1,
-            "DM": "D6265"
+            "DM": "D6266"
         },
         {
             "No": 33,
@@ -875,7 +875,7 @@
             "Data Type": "REAL",
             "Sample": 20,
             "scale": 100,
-            "DM": "D6266-6267"
+            "DM": "D6267-6268"
         },
         {
             "No": 34,
@@ -883,7 +883,7 @@
             "Data Type": "INT",
             "Sample": 115,
             "scale": 1,
-            "DM": "D6268"
+            "DM": "D6269"
         },
         {
             "No": 35,
@@ -891,21 +891,21 @@
             "Data Type": "REAL",
             "Sample": 20,
             "scale": 100,
-            "DM": "D6269-6270"
+            "DM": "D6270-6271"
         },
         {
             "No": 36,
             "Informasi": "status manufaturing",
             "Data Type": "boolean",
             "Sample": "0=start,1=finished",
-            "DM": "D6271"
+            "DM": "D6272"
         },
         {
             "No": 37,
             "Informasi": "Status Operation",
             "Data Type": "boolean",
             "Sample": "0=run, 1=failed",
-            "DM": "D6272"
+            "DM": "D6273"
         },
         {
             "No": 38,
@@ -913,21 +913,21 @@
             "Data Type": "REAL",
             "Sample": 2000000,
             "scale": 100,
-            "DM": "D6273-6274"
+            "DM": "D6274-6275"
         },
         {
             "No": 39,
             "Informasi": "status_read_data",
             "Data Type": "boolean",
             "Sample": "0=idle,1=done",
-            "DM": "D6275"
+            "DM": "D6276"
         }
     ],
     "BATCH_READ_04": [
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 4,
             "scale": 1,
             "DM": "D6300"
@@ -1235,7 +1235,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 5,
             "scale": 1,
             "DM": "D6400"
@@ -1543,7 +1543,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 6,
             "scale": 1,
             "DM": "D6500"
@@ -1851,7 +1851,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 7,
             "scale": 1,
             "DM": "D6600"
@@ -2159,7 +2159,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 8,
             "scale": 1,
             "DM": "D6700"
@@ -2467,7 +2467,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 9,
             "scale": 1,
             "DM": "D6800"
@@ -2775,7 +2775,7 @@
         {
             "No": 1,
             "Informasi": "BATCH",
-            "Data Type": "REAL",
+            "Data Type": "INT",
             "Sample": 10,
             "scale": 1,
             "DM": "D6900"
