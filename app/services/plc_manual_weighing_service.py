@@ -187,9 +187,9 @@ class PLCManualWeighingService:
         Returns None jika read gagal atau tidak ada data baru.
         """
         try:
-            # Read memory area D9000-D9012 (13 words total)
+            # Read memory area D9000-D9013 (14 words total)
             start_addr = 9000
-            word_count = 13  # D9000-D9012
+            word_count = 14  # D9000-D9013
             
             with FinsUdpClient(
                 ip=self.settings.plc_ip,
@@ -213,27 +213,26 @@ class PLCManualWeighingService:
                 
                 data_words = parse_memory_read_response(response.raw, word_count)
             
-            # Check handshake flag first (D9012 = index 12)
-            handshake_flag = data_words[12]
+            # Check handshake flag first (D9013 = index 13)
+            handshake_flag = data_words[13]
             if handshake_flag != 0:
-                logger.debug("D9012 handshake flag = 1 (already read), skipping")
+                logger.debug("D9013 handshake flag = 1 (already read), skipping")
                 return None  # Data sudah dibaca, tidak ada data baru
             
             # Parse fields with CORRECT mapping:
-            # D9000-D9001: BATCH (REAL, 2 words) - index 0-1
-            # D9002-D9005: NO-MO (ASCII, 4 words = 8 chars) - index 2-5
-            # D9006-D9007: NO-Product (REAL, 2 words) - index 6-7
-            # D9008-D9009: Consumption (REAL, 2 words, scale=100) - index 8-9
-            # D9010-D9011: Reserved - index 10-11
-            # D9012: status_manual_weigh_read (BOOLEAN, 1 word) - index 12
+            # D9000: BATCH (INT, 1 word) - index 0
+            # D9001-D9008: NO-MO (ASCII, 8 words = 16 chars) - index 1-8
+            # D9009-D9010: NO-Product (REAL, 2 words) - index 9-10
+            # D9011-D9012: Consumption (REAL, 2 words, scale=100) - index 11-12
+            # D9013: status_manual_weigh_read (BOOLEAN, 1 word) - index 13
             
-            batch = self._convert_from_words(data_words[0:2], "REAL", scale=1)
-            mo_words = data_words[2:6]  # D9002-D9005 (4 words = 8 chars)
+            batch = self._convert_from_words(data_words[0:1], "INT", scale=1)
+            mo_words = data_words[1:9]  # D9001-D9008 (8 words = 16 chars)
             mo_id_raw = self._convert_from_words(mo_words, "ASCII")
             mo_id = str(mo_id_raw) if mo_id_raw else ""
             
-            product_tmpl_id_raw = self._convert_from_words(data_words[6:8], "REAL", scale=1)
-            consumption_raw = self._convert_from_words(data_words[8:10], "REAL", scale=100)
+            product_tmpl_id_raw = self._convert_from_words(data_words[9:11], "REAL", scale=1)
+            consumption_raw = self._convert_from_words(data_words[11:13], "REAL", scale=100)
             
             # Validation
             if not mo_id or len(mo_id.strip()) == 0:

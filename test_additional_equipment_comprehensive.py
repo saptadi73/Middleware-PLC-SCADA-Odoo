@@ -18,11 +18,11 @@ print("-" * 80)
 
 fields = ref['ADDITIONAL']
 expected_layout = {
-    'BATCH': {'index': 0, 'type': 'REAL', 'dm': 'D9000-D9001', 'words': 2, 'scale': 1},
-    'NO-MO': {'index': 1, 'type': 'ASCII', 'dm': 'D9002-D9005', 'words': 4, 'scale': None},
-    'NO-Product': {'index': 2, 'type': 'REAL', 'dm': 'D9006-D9007', 'words': 2, 'scale': 1},
-    'Consumption': {'index': 3, 'type': 'REAL', 'dm': 'D9008-D9009', 'words': 2, 'scale': 100},
-    'status_manual_weigh_read': {'index': 4, 'type': 'BOOLEAN', 'dm': 'D9012', 'words': 1, 'scale': None}
+    'BATCH': {'index': 0, 'type': 'INT', 'dm': 'D9000', 'words': 1, 'scale': 1},
+    'NO-MO': {'index': 1, 'type': 'ASCII', 'dm': 'D9001-D9008', 'words': 8, 'scale': None},
+    'NO-Product': {'index': 2, 'type': 'REAL', 'dm': 'D9009-D9010', 'words': 2, 'scale': 1},
+    'Consumption': {'index': 3, 'type': 'REAL', 'dm': 'D9011-D9012', 'words': 2, 'scale': 100},
+    'status_manual_weigh_read': {'index': 4, 'type': 'BOOLEAN', 'dm': 'D9013', 'words': 1, 'scale': None}
 }
 
 json_ok = True
@@ -105,20 +105,20 @@ def convert_from_words(words, data_type, scale=1):
 # Test data
 test_cases = [
     {
-        'name': 'BATCH = 100000 (large ID)',
-        'value': 100000,
-        'type': 'REAL',
+        'name': 'BATCH = 10 (INT)',
+        'value': 10,
+        'type': 'INT',
         'scale': 1,
-        'words': [0x0001, 0x86A0],  # 100000 in big-endian
-        'expected': 100000.0
+        'words': [0x000A],  # 10 in hex
+        'expected': 10
     },
     {
         'name': 'NO-MO = "WH/MO/00002"',
         'value': 'WH/MO/00002',
         'type': 'ASCII',
         'scale': None,
-        'words': [0x5748, 0x2F4D, 0x4F2F, 0x3030],  # "WH" "/ M" "O/" "00" (last chars cut)
-        'expected': 'WH/MO/00'
+        'words': [0x5748, 0x2F4D, 0x4F2F, 0x3030, 0x3030, 0x3200, 0x0000, 0x0000],
+        'expected': 'WH/MO/00002'
     },
     {
         'name': 'NO-Product = 75000 (large ID)',
@@ -203,32 +203,26 @@ for field in fields:
     if name != 'status_manual_weigh_read':  # Skip handshake check
         expected_addr = 9000 + word_position
         if start_addr != expected_addr:
-            if expected_addr == 9010 and start_addr == 9012:
-                # Reserved gap D9010-D9011 before handshake D9012
-                print(f"✓ Reserved gap: D9010-D9011 (2 words)")
-                word_position = 12  # Jump to handshake index
-            else:
-                print(f"❌ {name}: Expected start address D{expected_addr}, got {dm}")
-                layout_ok = False
+            print(f"❌ {name}: Expected start address D{expected_addr}, got {dm}")
+            layout_ok = False
         else:
             print(f"✓ {name}: {dm} ({word_count} word{'s' if word_count > 1 else ''})")
             word_position += word_count
     else:
-        # Handshake should be at D9012
-        if start_addr == 9012:
+        # Handshake should be at D9013
+        if start_addr == 9013:
             print(f"✓ {name}: {dm} (handshake flag)")
         else:
-            print(f"❌ {name}: Expected D9012, got {dm}")
+            print(f"❌ {name}: Expected D9013, got {dm}")
             layout_ok = False
 
 print("-" * 80)
-total_words_used = 10  # BATCH(2) + NO-MO(4) + NO-Product(2) + Consumption(2)
-total_with_handshake = 13  # Including reserved (2) + handshake (1)
+total_words_used = 13  # BATCH(1) + NO-MO(8) + NO-Product(2) + Consumption(2)
+total_with_handshake = 14  # Including handshake (1)
 
 print(f"Data fields: {total_words_used} words")
-print(f"Reserved: 2 words (D9010-D9011)")
-print(f"Handshake: 1 word (D9012)")
-print(f"Total: {total_with_handshake} words (D9000-D9012)")
+print(f"Handshake: 1 word (D9013)")
+print(f"Total: {total_with_handshake} words (D9000-D9013)")
 
 if layout_ok:
     print("✅ Memory layout is CORRECT!")
