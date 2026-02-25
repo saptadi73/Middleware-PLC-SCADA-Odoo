@@ -129,21 +129,46 @@ class PLCEquipmentFailureService:
         words: List[int], 
         data_type: str, 
         length: Optional[int] = None,
+        scale: Optional[int] = None,
     ) -> Any:
         """Convert word list berdasarkan data type."""
         if not words:
             return None
         
         if data_type.upper() == "REAL":
-            # REAL 32-bit float dari 2 words
-            if len(words) < 2:
-                return None
-            word1 = words[0]
-            word2 = words[1]
-            # Combine words untuk floating point
-            combined = (word2 << 16) | word1
-            bytes_data = combined.to_bytes(4, byteorder="little")
-            return int.from_bytes(bytes_data, byteorder="little")
+            # REAL = 2 words (32-bit), combine them properly
+            # Format: high_word << 16 | low_word, then divide by scale
+            if not words:
+                return 0.0
+            if len(words) >= 2:
+                # Combine 2 words into 32-bit value (big-endian: high word first)
+                raw_value = (words[0] << 16) | words[1]
+            else:
+                # Fallback to single word if only 1 word provided
+                raw_value = words[0]
+            
+            # Apply scale factor if provided
+            scale_value = scale if scale and scale > 0 else 1
+            return float(raw_value) / float(scale_value)
+        
+        elif data_type.upper() == "INT":
+            # INT = 1 word (16-bit signed) atau 2 words (32-bit signed)
+            if not words:
+                return 0
+            if len(words) >= 2:
+                # 32-bit signed integer
+                raw_value = (words[0] << 16) | words[1]
+                # Handle signed values
+                if raw_value > 2147483647:
+                    raw_value -= 4294967296
+                return int(raw_value)
+            else:
+                # 16-bit signed integer
+                raw_value = words[0]
+                # Handle signed values
+                if raw_value > 32767:
+                    raw_value -= 65536
+                return int(raw_value)
         
         elif data_type.upper() == "ASCII":
             return self._parse_ascii(words, length or 16)
@@ -154,6 +179,10 @@ class PLCEquipmentFailureService:
                 return None
             digits = 4 if (length or 0) >= 4 else 2
             return self._convert_bcd_to_number(words[0], digits=digits)
+        
+        elif data_type.upper() == "BOOLEAN":
+            # BOOLEAN: 1 word, value 0 or 1
+            return bool(words[0]) if words else False
         
         return None
     
@@ -190,6 +219,7 @@ class PLCEquipmentFailureService:
                     dm_address = field.get("DM - Memory", "")
                     data_type = field.get("Data Type", "")
                     length = field.get("length")
+                    scale = field.get("scale")  # Get scale from mapping
 
                     if not dm_address:
                         continue
@@ -219,8 +249,8 @@ class PLCEquipmentFailureService:
                             logger.warning(f"Failed to parse response for {field_name}")
                             continue
 
-                        # Convert to appropriate data type
-                        value = self._convert_from_words(words, data_type, length)
+                        # Convert to appropriate data type with scale support
+                        value = self._convert_from_words(words, data_type, length, scale)
 
                         # Store di result
                         if field_name:

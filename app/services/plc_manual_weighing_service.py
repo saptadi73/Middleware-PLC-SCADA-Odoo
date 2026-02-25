@@ -35,7 +35,7 @@ class PLCManualWeighingService:
         self.mapping: List[Dict[str, Any]] = []
         self.mapping_structure: Dict[str, Any] = {}
         self._load_reference()
-        self.base_url = self.settings.ODOO_BASE_URL
+        self.base_url = self.settings.odoo_base_url
         self.handshake_service = get_handshake_service()
     
     def _load_reference(self):
@@ -125,15 +125,39 @@ class PLCManualWeighingService:
             return None
         
         if data_type.upper() == "REAL":
-            # REAL dapat 1 atau 2 words tergantung magnitude
-            # Untuk data weighing kami gunakan single word, value already scaled
-            if len(words) >= 1:
-                value = words[0]
-                # Apply scale factor
-                if scale and scale > 1:
-                    return value / scale
-                return value
-            return None
+            # REAL = 2 words (32-bit), combine them properly
+            # Format: high_word << 16 | low_word, then divide by scale
+            if not words:
+                return 0.0
+            if len(words) >= 2:
+                # Combine 2 words into 32-bit value (big-endian)
+                raw_value = (words[0] << 16) | words[1]
+            else:
+                # Fallback to single word if only 1 word provided
+                raw_value = words[0]
+            
+            # Apply scale factor
+            scale_value = scale if scale and scale > 0 else 1
+            return float(raw_value) / float(scale_value)
+        
+        elif data_type.upper() == "INT":
+            # INT = 1 word (16-bit signed) atau 2 words (32-bit signed)
+            if not words:
+                return 0
+            if len(words) >= 2:
+                # 32-bit signed integer
+                raw_value = (words[0] << 16) | words[1]
+                # Handle signed values
+                if raw_value > 2147483647:
+                    raw_value -= 4294967296
+                return int(raw_value)
+            else:
+                # 16-bit signed integer
+                raw_value = words[0]
+                # Handle signed values
+                if raw_value > 32767:
+                    raw_value -= 65536
+                return int(raw_value)
         
         elif data_type.upper() == "ASCII":
             # ASCII: 2 chars per word, big-endian
@@ -142,7 +166,7 @@ class PLCManualWeighingService:
         
         elif data_type.upper() == "BOOLEAN":
             # BOOLEAN: 1 word, value 0 or 1
-            return words[0] if words else 0
+            return bool(words[0]) if words else False
         
         return None
     
@@ -163,56 +187,72 @@ class PLCManualWeighingService:
         Returns None jika read gagal atau tidak ada data baru.
         """
         try:
-            client = FinsUdpClient(
-                plc_ip=self.settings.PLC_IP,
-                plc_port=self.settings.PLC_PORT,
-            )
-            
-            # Read memory area D9000-D9011 (12 words total)
+            # Read memory area D9000-D9012 (13 words total)
             start_addr = 9000
-            word_count = 12  # D9000-D9011
+            word_count = 13  # D9000-D9012
             
-            read_request = MemoryReadRequest(
-                dm_address=start_addr,
-                word_count=word_count,
-            )
+            with FinsUdpClient(
+                ip=self.settings.plc_ip,
+                port=self.settings.plc_port,
+                timeout_sec=self.settings.plc_timeout_sec,
+            ) as client:
+                read_request = MemoryReadRequest(
+                    area="DM",
+                    address=start_addr,
+                    count=word_count,
+                )
+                
+                frame = build_memory_read_frame(
+                    req=read_request,
+                    client_node=self.settings.client_node,
+                    plc_node=self.settings.plc_node,
+                )
+                
+                client.send_raw_hex(frame.hex())
+                response = client.recv()
+                
+                data_words = parse_memory_read_response(response.raw, word_count)
             
-            frame = build_memory_read_frame(read_request)
-            response = client.send_command(frame, timeout=5)
-            
-            if not response or len(response) < 28:  # Minimum response length
-                logger.warning("Invalid response from PLC read manual weighing")
-                return None
-            
-            data_words = parse_memory_read_response(response, word_count)
-            if not data_words or len(data_words) < 12:
-                logger.warning("Insufficient words in PLC response")
-                return None
-            
-            # Check handshake flag first (D9011 = index 11)
-            handshake_flag = data_words[11]
+            # Check handshake flag first (D9012 = index 12)
+            handshake_flag = data_words[12]
             if handshake_flag != 0:
-                logger.debug("D9011 handshake flag = 1 (already read), skipping")
+                logger.debug("D9012 handshake flag = 1 (already read), skipping")
                 return None  # Data sudah dibaca, tidak ada data baru
             
-            # Parse fields
-            batch = self._convert_from_words([data_words[0]], "REAL", scale=1)
-            mo_words = data_words[1:5]  # D9001-D9004 (4 words = 8 chars)
-            mo_id = self._convert_from_words(mo_words, "ASCII")
-            product_tmpl_id = self._convert_from_words([data_words[5]], "REAL", scale=1)
-            consumption = self._convert_from_words([data_words[6]], "REAL", scale=100)
+            # Parse fields with CORRECT mapping:
+            # D9000-D9001: BATCH (REAL, 2 words) - index 0-1
+            # D9002-D9005: NO-MO (ASCII, 4 words = 8 chars) - index 2-5
+            # D9006-D9007: NO-Product (REAL, 2 words) - index 6-7
+            # D9008-D9009: Consumption (REAL, 2 words, scale=100) - index 8-9
+            # D9010-D9011: Reserved - index 10-11
+            # D9012: status_manual_weigh_read (BOOLEAN, 1 word) - index 12
+            
+            batch = self._convert_from_words(data_words[0:2], "REAL", scale=1)
+            mo_words = data_words[2:6]  # D9002-D9005 (4 words = 8 chars)
+            mo_id_raw = self._convert_from_words(mo_words, "ASCII")
+            mo_id = str(mo_id_raw) if mo_id_raw else ""
+            
+            product_tmpl_id_raw = self._convert_from_words(data_words[6:8], "REAL", scale=1)
+            consumption_raw = self._convert_from_words(data_words[8:10], "REAL", scale=100)
             
             # Validation
             if not mo_id or len(mo_id.strip()) == 0:
                 logger.warning("NO-MO is empty, skipping")
                 return None
             
-            if not product_tmpl_id or product_tmpl_id <= 0:
-                logger.warning("NO-Product is invalid (<=0), skipping")
+            try:
+                product_tmpl_id = float(product_tmpl_id_raw) if product_tmpl_id_raw is not None else 0.0
+                consumption = float(consumption_raw) if consumption_raw is not None else 0.0
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid numeric data: product={product_tmpl_id_raw}, consumption={consumption_raw}")
                 return None
             
-            if not consumption or consumption <= 0:
-                logger.warning("Consumption is invalid (<=0), skipping")
+            if product_tmpl_id <= 0:
+                logger.warning(f"NO-Product is invalid ({product_tmpl_id} <= 0), skipping")
+                return None
+            
+            if consumption <= 0:
+                logger.warning(f"Consumption is invalid ({consumption} <= 0), skipping")
                 return None
             
             result = {
