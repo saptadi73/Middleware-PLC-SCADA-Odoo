@@ -357,17 +357,17 @@ class PLCManualWeighingService:
     
     def mark_handshake(self) -> bool:
         """
-        Mark handshake flag D9011 = 1 setelah successful sync ke Odoo.
+        Mark handshake flag D9013 = 1 setelah successful sync ke Odoo.
         
         Returns True jika berhasil, False jika gagal.
         """
         try:
-            # Use handshake service to set D9011 = 1
+            # Use handshake service to set D9013 = 1
             result = self.handshake_service.mark_manual_weighing_as_read()
             if result:
-                logger.info("Marked D9011 (manual weighing read) as read")
+                logger.info("Marked D9013 (manual weighing read) as read")
             else:
-                logger.warning("Failed to mark D9011 as read")
+                logger.warning("Failed to mark D9013 as read")
             return result
         except Exception as e:
             logger.error(f"Error marking handshake: {e}")
@@ -392,14 +392,14 @@ class PLCManualWeighingService:
             is_valid, error = self.validate_weighing_data(weighing_data)
             if not is_valid:
                 logger.warning(f"Validation failed: {error}")
-                # Don't mark handshake, keep D9011=0 for retry
+                # Don't mark handshake, keep D9013=0 for retry
                 return False
             
             # Step 3: Sync to Odoo
             sync_ok, sync_error = self.sync_to_odoo(weighing_data)
             if not sync_ok:
                 logger.error(f"Sync failed: {sync_error}")
-                # Don't mark handshake, keep D9011=0 for retry
+                # Don't mark handshake, keep D9013=0 for retry
                 return False
             
             # Step 4: Mark handshake (only after successful sync)

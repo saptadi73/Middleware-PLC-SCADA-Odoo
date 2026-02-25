@@ -48,7 +48,7 @@ class PLCHandshakeService:
     # Memory addresses for status_read_data flags
     WRITE_AREA_STATUS_ADDRESS = 7076  # D7076 for WRITE/BATCH area handshake  
     EQUIPMENT_FAILURE_STATUS_ADDRESS = 8022  # D8022 for equipment failure handshake
-    MANUAL_WEIGHING_STATUS_ADDRESS = 9011  # D9011 for manual weighing handshake (TASK 5)
+    MANUAL_WEIGHING_STATUS_ADDRESS = 9013  # D9013 for manual weighing handshake (TASK 5)
     READ_BATCH_STATUS_START = 6076  # BATCH_READ_01 status_read_data
     READ_BATCH_STATUS_STEP = 100    # Per-batch offset
     READ_BATCH_MIN = 1
@@ -162,7 +162,7 @@ class PLCHandshakeService:
     
     def mark_manual_weighing_as_read(self) -> bool:
         """
-        Mark manual weighing data as read by Middleware (set D9011 = 1).
+        Mark manual weighing data as read by Middleware (set D9013 = 1).
         
         Called after successfully reading and syncing manual weighing data to Odoo.
         This tells PLC that Middleware has processed the weighing data.
@@ -172,7 +172,7 @@ class PLCHandshakeService:
         """
         try:
             self._write_status_flag(self.MANUAL_WEIGHING_STATUS_ADDRESS, 1)
-            logger.info("Marked manual weighing as read (D9011=1)")
+            logger.info("Marked manual weighing as read (D9013=1)")
             return True
         except Exception as exc:
             logger.error(f"Error marking manual weighing as read: {exc}", exc_info=True)
@@ -183,8 +183,8 @@ class PLCHandshakeService:
         Check manual weighing status flag.
         
         Returns:
-            True: Middleware has already read (D9011=1)
-            False: Not yet read (D9011=0)
+            True: Middleware has already read (D9013=1)
+            False: Not yet read (D9013=0)
         """
         try:
             status = self._read_status_flag(self.MANUAL_WEIGHING_STATUS_ADDRESS)
@@ -202,7 +202,7 @@ class PLCHandshakeService:
         """
         try:
             self._write_status_flag(self.MANUAL_WEIGHING_STATUS_ADDRESS, 0)
-            logger.info("Reset manual weighing status (D9011=0)")
+            logger.info("Reset manual weighing status (D9013=0)")
             return True
         except Exception as exc:
             logger.error(f"Error resetting manual weighing status: {exc}", exc_info=True)
@@ -372,4 +372,3 @@ def get_handshake_service() -> PLCHandshakeService:
     if _handshake_service is None:
         _handshake_service = PLCHandshakeService()
     return _handshake_service
-
