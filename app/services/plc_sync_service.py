@@ -119,6 +119,7 @@ class PLCSyncService:
                     mo_id_raw = plc_data.get("mo_id") or None
                     mo_id = self._normalize_mo_id(mo_id_raw)
                     if not mo_id:
+                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
                         continue
 
                     processed_batches += 1
@@ -138,6 +139,16 @@ class PLCSyncService:
                     if not batch:
                         result = session.execute(
                             select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
+                        )
+                        batch = result.scalar_one_or_none()
+
+                    if not batch:
+                        # Fallback terakhir: gunakan slot/batch_no PLC.
+                        # Berguna saat MO_ID terbaca noisy tapi slot mapping masih valid.
+                        result = session.execute(
+                            select(TableSmoBatch).where(
+                                TableSmoBatch.batch_no == plc_batch_no  # type: ignore[arg-type]
+                            )
                         )
                         batch = result.scalar_one_or_none()
 
@@ -308,6 +319,7 @@ class PLCSyncService:
                     mo_id_raw = plc_data.get("mo_id")
                     mo_id = self._normalize_mo_id(mo_id_raw) or ""
                     if not mo_id:
+                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
                         continue
 
                     processed_batches += 1
@@ -324,6 +336,15 @@ class PLCSyncService:
                     if not batch:
                         result = session.execute(
                             select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
+                        )
+                        batch = result.scalar_one_or_none()
+
+                    if not batch:
+                        # Fallback terakhir: gunakan slot/batch_no PLC.
+                        result = session.execute(
+                            select(TableSmoBatch).where(
+                                TableSmoBatch.batch_no == plc_batch_no  # type: ignore[arg-type]
+                            )
                         )
                         batch = result.scalar_one_or_none()
 
@@ -461,6 +482,26 @@ class PLCSyncService:
                     logger.debug(
                         f"Updated {attr_name}: {current_value} → {new_consumption}"
                     )
+
+        # Update liquid actual consumption (LQ114/LQ115)
+        liquids = plc_data.get("liquids", {})
+        liquid_field_map = {
+            "lq114": "actual_consumption_lq_tetes",
+            "lq115": "actual_consumption_lq_fml",
+        }
+        for liquid_key, attr_name in liquid_field_map.items():
+            liquid_data = liquids.get(liquid_key, {})
+            new_consumption = liquid_data.get("consumption")
+            if new_consumption is None:
+                continue
+
+            current_value = getattr(batch, attr_name)
+            if current_value != new_consumption:
+                setattr(batch, attr_name, new_consumption)
+                changed = True
+                logger.debug(
+                    f"Updated {attr_name}: {current_value} → {new_consumption}"
+                )
 
         # Update actual weight quantity finished goods
         new_quantity = plc_data.get("weight_finished_good")

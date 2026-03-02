@@ -107,43 +107,74 @@ class OdooConsumptionService:
         """
         try:
             base_url = self.settings.odoo_base_url.rstrip("/")
-            auth_url = f"{base_url}/api/scada/authenticate"
-            logger.info(
-                "Odoo auth attempt: url=%s db=%s user=%s",
-                auth_url,
-                self.settings.odoo_db,
-                self.settings.odoo_username,
-            )
+            auth_attempts = [
+                (
+                    f"{base_url}/api/scada/authenticate",
+                    {
+                        "db": self.settings.odoo_db,
+                        "login": self.settings.odoo_username,
+                        "password": self.settings.odoo_password,
+                    },
+                ),
+                (
+                    f"{base_url}/web/session/authenticate",
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "call",
+                        "params": {
+                            "db": self.settings.odoo_db,
+                            "login": self.settings.odoo_username,
+                            "password": self.settings.odoo_password,
+                        },
+                    },
+                ),
+            ]
 
-            auth_payload = {
-                "db": self.settings.odoo_db,
-                "login": self.settings.odoo_username,
-                "password": self.settings.odoo_password,
-            }
+            for auth_url, auth_payload in auth_attempts:
+                logger.info(
+                    "Odoo auth attempt: url=%s db=%s user=%s",
+                    auth_url,
+                    self.settings.odoo_db,
+                    self.settings.odoo_username,
+                )
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(auth_url, json=auth_payload)
-                response.raise_for_status()
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(auth_url, json=auth_payload)
+                        self._log_odoo_response(auth_url, response)
 
-                auth_data = response.json()
-                
-                # Handle both direct status and nested result.status
-                status = auth_data.get("status")
-                if not status:
-                    # Check if status is nested in result
-                    result = auth_data.get("result", {})
-                    status = result.get("status")
-                
-                if status != "success":
-                    logger.error(f"Odoo auth failed: {auth_data}")
-                    return None
+                        if response.status_code >= 400:
+                            logger.warning(
+                                "Odoo auth endpoint failed (%s): status=%s",
+                                auth_url,
+                                response.status_code,
+                            )
+                            continue
 
-                # Create new client dengan cookies
-                cookies = response.cookies
-                new_client = httpx.AsyncClient(timeout=30.0)
-                new_client.cookies.update(cookies)
-                logger.info("✓ Authenticated with Odoo successfully")
-                return new_client
+                        auth_data = response.json()
+                        status = auth_data.get("status")
+                        if not status:
+                            status = (auth_data.get("result") or {}).get("status")
+
+                        is_success = status == "success" or bool((auth_data.get("result") or {}).get("uid"))
+                        if not is_success:
+                            logger.warning(
+                                "Odoo auth not successful at %s: %s",
+                                auth_url,
+                                auth_data,
+                            )
+                            continue
+
+                        new_client = httpx.AsyncClient(timeout=30.0)
+                        new_client.cookies.update(response.cookies)
+                        logger.info("✓ Authenticated with Odoo successfully via %s", auth_url)
+                        return new_client
+
+                except Exception as auth_exc:
+                    logger.warning("Odoo auth attempt failed at %s: %s", auth_url, auth_exc)
+
+            logger.error("Authentication failed for all configured Odoo auth endpoints")
+            return None
 
         except Exception as e:
             logger.error(f"Authentication error: {e}")

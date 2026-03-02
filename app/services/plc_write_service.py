@@ -106,10 +106,10 @@ class PLCWriteService:
         for item in self.mapping.get(resolved_batch_name, []):
             info = str(item.get("Informasi") or "")
             info_upper = info.upper()
-            if "SILO" not in info_upper:
+            if "SILO" not in info_upper and "LQ" not in info_upper:
                 continue
 
-            match = re.search(r"SILO(?:\s+ID)?\s+(\d+)", info_upper)
+            match = re.search(r"(?:SILO|LQ)(?:\s+ID)?\s+(\d+)", info_upper)
             if not match:
                 continue
 
@@ -487,25 +487,39 @@ class PLCWriteService:
             "Quantity Goods_id": mo_batch_data.get("consumption", 0),
         }
         
-        # Map silos (A-M -> 101-113)
+        # Map silos + liquid tanks (101-115)
         silo_id_fields, consumption_fields = self._build_silo_field_maps(resolved_batch_name)
-        silo_letters = "abcdefghijklm"
-        for idx, letter in enumerate(silo_letters):
-            silo_number = 101 + idx
+        silo_number_to_letter = {101 + idx: letter for idx, letter in enumerate("abcdefghijklm")}
+        liquid_field_names = {
+            114: ("lq114", "consumption_lq_tetes"),
+            115: ("lq115", "consumption_lq_fml"),
+        }
 
-            # Silo ID field name from reference (e.g., "SILO ID 101 (SILO BESAR)")
+        for silo_number in sorted(silo_id_fields.keys()):
+
+            # Equipment ID field name from reference (e.g., "SILO ID 101", "LQ ID 114")
             silo_id_field = silo_id_fields.get(silo_number)
             if silo_id_field:
-                silo_value = mo_batch_data.get(f"silo_{letter}", silo_number)
+                if silo_number in silo_number_to_letter:
+                    letter = silo_number_to_letter[silo_number]
+                    silo_value = mo_batch_data.get(f"silo_{letter}", silo_number)
+                else:
+                    id_key = liquid_field_names.get(silo_number, (None, None))[0]
+                    silo_value = mo_batch_data.get(id_key, silo_number) if id_key else silo_number
                 plc_data[silo_id_field] = silo_value
                 logger.debug(f"Set {silo_id_field} = {silo_value}")
             else:
                 logger.debug(f"Silo ID field not found for {silo_number} in {resolved_batch_name}")
 
-            # Silo Consumption field name from reference (e.g., "SILO ID 101 Consumption")
+            # Equipment consumption field name from reference
             consumption_field = consumption_fields.get(silo_number)
             if consumption_field:
-                consumption_value = mo_batch_data.get(f"consumption_silo_{letter}", 0)
+                if silo_number in silo_number_to_letter:
+                    letter = silo_number_to_letter[silo_number]
+                    consumption_value = mo_batch_data.get(f"consumption_silo_{letter}", 0)
+                else:
+                    consumption_key = liquid_field_names.get(silo_number, (None, None))[1]
+                    consumption_value = mo_batch_data.get(consumption_key, 0) if consumption_key else 0
                 plc_data[consumption_field] = float(consumption_value) if consumption_value else 0
                 logger.debug(f"Set {consumption_field} = {plc_data[consumption_field]}")
             else:

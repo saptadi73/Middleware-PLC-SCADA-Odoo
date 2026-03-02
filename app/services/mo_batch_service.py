@@ -1,6 +1,9 @@
 import re
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union, cast
+
+import json
 
 from sqlalchemy.orm import Session
 
@@ -35,6 +38,60 @@ _SILO_NUMBER_TO_LETTER = {
     113: "m",
 }
 
+_LIQUID_NUMBER_TO_FIELDS = {
+    114: ("component_lq_tetes_name", "consumption_lq_tetes"),
+    115: ("component_lq_fml_name", "consumption_lq_fml"),
+}
+
+_EQUIPMENT_NUMBER_TO_FIELDS: Dict[int, tuple[str, str]] = {
+    **{
+        number: (f"component_silo_{letter}_name", f"consumption_silo_{letter}")
+        for number, letter in _SILO_NUMBER_TO_LETTER.items()
+    },
+    **_LIQUID_NUMBER_TO_FIELDS,
+}
+
+
+def _normalize_equipment_key(raw: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(raw or "").strip().lower())
+
+
+def _load_equipment_aliases() -> Dict[str, int]:
+    aliases: Dict[str, int] = {}
+    reference_path = Path(__file__).parent.parent / "reference" / "EQUIPMENT_REFERENCE.json"
+
+    if not reference_path.exists():
+        return aliases
+
+    try:
+        with open(reference_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        for item in data.get("raw_list", []):
+            equipment_id = item.get("id")
+            if not isinstance(equipment_id, int):
+                continue
+
+            for key in ("equipment", "equipment_code", "Product"):
+                alias = _normalize_equipment_key(item.get(key))
+                if alias:
+                    aliases[alias] = equipment_id
+
+            if equipment_id == 114:
+                aliases.setdefault("lqtetes", 114)
+                aliases.setdefault("lqtestes", 114)
+                aliases.setdefault("lqtest", 114)
+            if equipment_id == 115:
+                aliases.setdefault("lqfml", 115)
+
+    except Exception:
+        return aliases
+
+    return aliases
+
+
+_EQUIPMENT_ALIAS_TO_NUMBER = _load_equipment_aliases()
+
 
 def _extract_silo_number(equipment: Optional[Dict[str, Any]]) -> Optional[int]:
     if not equipment:
@@ -45,12 +102,16 @@ def _extract_silo_number(equipment: Optional[Dict[str, Any]]) -> Optional[int]:
     combined = f"{code} {name}".lower()
 
     match = re.search(r"(\d{3})", combined)
-    if not match:
-        return None
+    if match:
+        number = int(match.group(1))
+        if number in _EQUIPMENT_NUMBER_TO_FIELDS:
+            return number
 
-    number = int(match.group(1))
-    if number in _SILO_NUMBER_TO_LETTER:
-        return number
+    for candidate in (_normalize_equipment_key(code), _normalize_equipment_key(name)):
+        mapped = _EQUIPMENT_ALIAS_TO_NUMBER.get(candidate)
+        if mapped in _EQUIPMENT_NUMBER_TO_FIELDS:
+            return mapped
+
     return None
 
 
@@ -59,9 +120,7 @@ def _apply_component_to_batch(batch: TableSmoBatch, component: Dict[str, Any]) -
     if not silo_number:
         return
 
-    letter = _SILO_NUMBER_TO_LETTER[silo_number]
-    component_name_field = f"component_silo_{letter}_name"
-    consumption_field = f"consumption_silo_{letter}"
+    component_name_field, consumption_field = _EQUIPMENT_NUMBER_TO_FIELDS[silo_number]
 
     component_name = component.get("product_name")
     consumption_value = component.get("to_consume")
@@ -92,9 +151,9 @@ def _upsert_batch(db: Session, mo_data: Dict[str, Any], batch_no: int) -> TableS
     batch.equipment_id_batch = str(equipment.get("code") or "")  # type: ignore[assignment]
     batch.finished_goods = str(mo_data.get("product_name") or "")  # type: ignore[assignment]
 
-    for letter in _SILO_NUMBER_TO_LETTER.values():
-        setattr(batch, f"component_silo_{letter}_name", None)
-        setattr(batch, f"consumption_silo_{letter}", None)
+    for component_name_field, consumption_field in _EQUIPMENT_NUMBER_TO_FIELDS.values():
+        setattr(batch, component_name_field, None)
+        setattr(batch, consumption_field, None)
 
     for component in mo_data.get("components_consumption", []):
         _apply_component_to_batch(batch, component)
@@ -193,6 +252,13 @@ def write_mo_batch_queue_to_plc(
                 batch_data[f"consumption_silo_{letter}"] = getattr(
                     batch, f"consumption_silo_{letter}", None
                 )
+
+            batch_data["lq114"] = getattr(batch, "lq114", None) or 114
+            batch_data["lq115"] = getattr(batch, "lq115", None) or 115
+            batch_data["component_lq_tetes_name"] = getattr(batch, "component_lq_tetes_name", None)
+            batch_data["component_lq_fml_name"] = getattr(batch, "component_lq_fml_name", None)
+            batch_data["consumption_lq_tetes"] = getattr(batch, "consumption_lq_tetes", None)
+            batch_data["consumption_lq_fml"] = getattr(batch, "consumption_lq_fml", None)
 
             plc_service.write_mo_batch_to_plc(
                 batch_data,

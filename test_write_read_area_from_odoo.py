@@ -42,7 +42,13 @@ _SILO_NUMBER_TO_LETTER = {
     113: "m",
 }
 
+_LIQUID_NUMBER_TO_KEYS = {
+    114: ("LQ ID 114", "LQ ID 114 Consumption"),
+    115: ("LQ ID 115", "LQ ID 115 Consumption"),
+}
+
 _SILO_LETTER_TO_NUMBER = {letter: number for number, letter in _SILO_NUMBER_TO_LETTER.items()}
+_ALL_EQUIPMENT_NUMBERS = set(_SILO_NUMBER_TO_LETTER) | set(_LIQUID_NUMBER_TO_KEYS)
 FORCED_STATUS_MANUFACTURING = 1
 FORCED_STATUS_OPERATION = 0
 
@@ -199,7 +205,7 @@ def _extract_silo_number(equipment: Optional[Dict[str, Any]]) -> Optional[int]:
     match_3digits = re.search(r"(\d{3})", combined)
     if match_3digits:
         number = int(match_3digits.group(1))
-        if number in _SILO_NUMBER_TO_LETTER:
+        if number in _ALL_EQUIPMENT_NUMBERS:
             return number
 
     match_letter = re.search(r"\bsilo[_\s-]*([a-m])\b", combined)
@@ -237,6 +243,12 @@ def _build_read_payload(
         payload[silo_key] = float(silo_number)
         payload[f"SILO ID {silo_number} Consumption"] = 0.0
 
+    # Default liquid tank IDs + consumption
+    payload["LQ ID 114"] = 114.0
+    payload["LQ ID 114 Consumption"] = 0.0
+    payload["LQ ID 115"] = 115.0
+    payload["LQ ID 115 Consumption"] = 0.0
+
     for component in mo_data.get("components_consumption", []):
         silo_number = _extract_silo_number(component.get("equipment"))
         if not silo_number:
@@ -244,7 +256,11 @@ def _build_read_payload(
         value = component.get("to_consume")
         if value is None:
             value = component.get("consumed")
-        payload[f"SILO ID {silo_number} Consumption"] = float(value or 0)
+        if silo_number in _SILO_NUMBER_TO_LETTER:
+            payload[f"SILO ID {silo_number} Consumption"] = float(value or 0)
+        elif silo_number in _LIQUID_NUMBER_TO_KEYS:
+            _, consumption_field = _LIQUID_NUMBER_TO_KEYS[silo_number]
+            payload[consumption_field] = float(value or 0)
 
     return payload
 

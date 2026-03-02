@@ -65,6 +65,8 @@ class MOHistoryService:
             component_silo_k_name=mo_batch.component_silo_k_name,
             component_silo_l_name=mo_batch.component_silo_l_name,
             component_silo_m_name=mo_batch.component_silo_m_name,
+            component_lq_tetes_name=mo_batch.component_lq_tetes_name,
+            component_lq_fml_name=mo_batch.component_lq_fml_name,
             # Planned consumption
             consumption_silo_a=mo_batch.consumption_silo_a,
             consumption_silo_b=mo_batch.consumption_silo_b,
@@ -79,6 +81,8 @@ class MOHistoryService:
             consumption_silo_k=mo_batch.consumption_silo_k,
             consumption_silo_l=mo_batch.consumption_silo_l,
             consumption_silo_m=mo_batch.consumption_silo_m,
+            consumption_lq_tetes=mo_batch.consumption_lq_tetes,
+            consumption_lq_fml=mo_batch.consumption_lq_fml,
             # Actual consumption from PLC
             actual_consumption_silo_a=mo_batch.actual_consumption_silo_a,
             actual_consumption_silo_b=mo_batch.actual_consumption_silo_b,
@@ -93,6 +97,8 @@ class MOHistoryService:
             actual_consumption_silo_k=mo_batch.actual_consumption_silo_k,
             actual_consumption_silo_l=mo_batch.actual_consumption_silo_l,
             actual_consumption_silo_m=mo_batch.actual_consumption_silo_m,
+            actual_consumption_lq_tetes=mo_batch.actual_consumption_lq_tetes,
+            actual_consumption_lq_fml=mo_batch.actual_consumption_lq_fml,
             # Status
             status_manufacturing=mo_batch.status_manufacturing,
             status_operation=mo_batch.status_operation,

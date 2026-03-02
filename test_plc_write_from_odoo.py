@@ -36,6 +36,13 @@ _SILO_NUMBER_TO_LETTER = {
     113: "m",
 }
 
+_LIQUID_NUMBER_TO_KEYS = {
+    114: ("lq114", "component_lq_tetes_name", "consumption_lq_tetes"),
+    115: ("lq115", "component_lq_fml_name", "consumption_lq_fml"),
+}
+
+_ALL_EQUIPMENT_NUMBERS = set(_SILO_NUMBER_TO_LETTER) | set(_LIQUID_NUMBER_TO_KEYS)
+
 
 def _extract_silo_number(equipment: Optional[Dict[str, Any]]) -> Optional[int]:
     if not equipment:
@@ -50,7 +57,7 @@ def _extract_silo_number(equipment: Optional[Dict[str, Any]]) -> Optional[int]:
         return None
 
     number = int(match.group(1))
-    if number in _SILO_NUMBER_TO_LETTER:
+    if number in _ALL_EQUIPMENT_NUMBERS:
         return number
     return None
 
@@ -74,20 +81,34 @@ def _build_mo_batch_data(mo_data: Dict[str, Any]) -> Dict[str, Any]:
         mo_batch_data[f"component_silo_{letter}_name"] = None
         mo_batch_data[f"consumption_silo_{letter}"] = None
 
+    # Defaults for liquid tanks
+    mo_batch_data["lq114"] = 114
+    mo_batch_data["component_lq_tetes_name"] = None
+    mo_batch_data["consumption_lq_tetes"] = None
+    mo_batch_data["lq115"] = 115
+    mo_batch_data["component_lq_fml_name"] = None
+    mo_batch_data["consumption_lq_fml"] = None
+
     # Map components consumption to silo fields
     for component in mo_data.get("components_consumption", []):
         silo_number = _extract_silo_number(component.get("equipment"))
         if not silo_number:
             continue
 
-        letter = _SILO_NUMBER_TO_LETTER[silo_number]
         component_name = component.get("product_name")
         consumption_value = component.get("to_consume")
         if consumption_value is None:
             consumption_value = component.get("consumed")
 
-        mo_batch_data[f"component_silo_{letter}_name"] = component_name
-        mo_batch_data[f"consumption_silo_{letter}"] = consumption_value
+        if silo_number in _SILO_NUMBER_TO_LETTER:
+            letter = _SILO_NUMBER_TO_LETTER[silo_number]
+            mo_batch_data[f"component_silo_{letter}_name"] = component_name
+            mo_batch_data[f"consumption_silo_{letter}"] = consumption_value
+        elif silo_number in _LIQUID_NUMBER_TO_KEYS:
+            id_key, component_key, consumption_key = _LIQUID_NUMBER_TO_KEYS[silo_number]
+            mo_batch_data[id_key] = silo_number
+            mo_batch_data[component_key] = component_name
+            mo_batch_data[consumption_key] = consumption_value
 
     return mo_batch_data
 

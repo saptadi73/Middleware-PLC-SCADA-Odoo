@@ -32,6 +32,7 @@ class PLCReadService:
     MAX_REASONABLE_CONSUMPTION = 100000.0
     MAX_REASONABLE_SILO_CONSUMPTION = 5000.0
     MAX_REASONABLE_QUANTITY = 10000000.0
+    MAX_REASONABLE_WEIGHT = 10000000.0
 
     def __init__(self):
         self.settings = get_settings()
@@ -168,7 +169,11 @@ class PLCReadService:
             return decoded_value
 
         field_upper = field_name.upper()
-        if "CONSUMPTION" not in field_upper and "QUANTITY" not in field_upper:
+        if (
+            "CONSUMPTION" not in field_upper
+            and "QUANTITY" not in field_upper
+            and "WEIGHT" not in field_upper
+        ):
             return decoded_value
 
         field_limit = self._get_real_field_limit(field_upper)
@@ -209,6 +214,8 @@ class PLCReadService:
     def _get_real_field_limit(self, field_upper: str) -> float:
         if "CONSUMPTION" in field_upper and ("SILO ID" in field_upper or "LQ ID" in field_upper):
             return self.MAX_REASONABLE_SILO_CONSUMPTION
+        if "WEIGHT" in field_upper:
+            return self.MAX_REASONABLE_WEIGHT
         if "QUANTITY" in field_upper:
             return self.MAX_REASONABLE_QUANTITY
         return self.MAX_REASONABLE_CONSUMPTION
@@ -375,7 +382,7 @@ class PLCReadService:
     def _read_batch_snapshot_words(self, batch_no: int) -> List[int]:
         """Read one batch memory block with consistency retry for ASCII fields."""
         start_address = self._get_batch_start_address(batch_no)
-        max_snapshot_attempts = max(self.MAX_READ_ATTEMPTS, 5)
+        max_snapshot_attempts = max(self.MAX_READ_ATTEMPTS, 4)
         best_words: List[int] = []
         best_score = -1
 
@@ -403,7 +410,7 @@ class PLCReadService:
 
             previous_words = current_words
             if attempt < max_snapshot_attempts:
-                logger.warning(
+                logger.debug(
                     "Low-quality batch snapshot for batch=%s (score=%s, attempt %s/%s). Retrying...",
                     batch_no,
                     current_score,
@@ -413,6 +420,22 @@ class PLCReadService:
                 time.sleep(self.RETRY_DELAY_SEC)
 
         return best_words if best_words else []
+
+    def _read_batch_snapshot_with_quality(self, batch_no: int) -> tuple[List[int], int, bool]:
+        """Read one batch snapshot with quality metadata."""
+        snapshot_words = self._read_batch_snapshot_words(batch_no)
+        if not snapshot_words:
+            return ([], -1, False)
+
+        score = self._score_batch_snapshot(snapshot_words)
+        strict_valid = self._is_strict_snapshot_valid(snapshot_words)
+        if not strict_valid:
+            logger.warning(
+                "Batch=%s snapshot best-effort only (score=%s).",
+                batch_no,
+                score,
+            )
+        return (snapshot_words, score, strict_valid)
 
     def _is_valid_product_text(self, raw_text: Any) -> bool:
         if not isinstance(raw_text, str):
@@ -649,9 +672,17 @@ class PLCReadService:
 
     def read_all_fields(self, batch_no: int = 1) -> Dict[str, Any]:
         """Read all fields for one batch."""
+        all_fields, _, _ = self._read_all_fields_with_quality(batch_no=batch_no)
+        return all_fields
+
+    def _read_all_fields_with_quality(self, batch_no: int = 1) -> tuple[Dict[str, Any], int, bool]:
+        """Read all fields plus snapshot quality metadata."""
         mapping = self._get_batch_mapping(batch_no)
         result: Dict[str, Any] = {}
-        snapshot_words = self._read_batch_snapshot_words(batch_no)
+        snapshot_words, snapshot_score, strict_valid = self._read_batch_snapshot_with_quality(batch_no)
+
+        if not snapshot_words:
+            return (result, -1, False)
 
         for field_def in mapping:
             field_name = field_def.get("Informasi")
@@ -672,11 +703,11 @@ class PLCReadService:
                 )
                 result[str(field_name)] = None
 
-        return result
+        return (result, snapshot_score, strict_valid)
 
     def read_batch_data(self, batch_no: int = 1) -> Dict[str, Any]:
         """Read and format one batch payload from PLC."""
-        all_fields = self.read_all_fields(batch_no=batch_no)
+        all_fields, snapshot_score, strict_valid = self._read_all_fields_with_quality(batch_no=batch_no)
 
         parsed_batch_no = all_fields.get("BATCH", batch_no)
         try:
@@ -698,6 +729,10 @@ class PLCReadService:
             "product_name": all_fields.get("finished_goods", ""),
             "bom_name": all_fields.get("NO-BoM", ""),
             "quantity": all_fields.get("Quantity Goods_id", 0),
+            "quality": {
+                "snapshot_score": snapshot_score,
+                "strict_valid": strict_valid,
+            },
             "silos": {},
             "status": {
                 "manufacturing": all_fields.get("status manufaturing", False),
