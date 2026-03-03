@@ -782,24 +782,33 @@ class OdooConsumptionService:
         """
         try:
             # Extract consumption data from batch
-            # Convert SCADA tags (silo_a, silo_b) → equipment codes (silo101, silo102)
+            # Convert SCADA tags (silo_a, lq_tetes, etc.) → equipment codes
             consumption_entries: Dict[str, float] = {}
-            
-            for letter in "abcdefghijklm":
-                consumption_key = f"consumption_silo_{letter}"
-                silo_tag = f"silo_{letter}"
 
-                if consumption_key in batch_data:
-                    consumption_value = batch_data[consumption_key]
-                    if consumption_value and consumption_value > 0:
-                        # Convert silo_a → silo101, etc
-                        equipment_code = self._convert_scada_tag_to_equipment_code(silo_tag)
-                        if equipment_code:
-                            consumption_entries[equipment_code] = float(consumption_value)
-                        else:
-                            logger.warning(
-                                f"Cannot convert {silo_tag} to equipment_code, skipping"
-                            )
+            for payload_key, raw_value in batch_data.items():
+                if not isinstance(payload_key, str) or not payload_key.startswith("consumption_"):
+                    continue
+
+                scada_tag = payload_key[len("consumption_") :]
+                if not scada_tag:
+                    continue
+
+                try:
+                    consumption_value = float(raw_value)
+                except (TypeError, ValueError):
+                    continue
+
+                if consumption_value <= 0:
+                    continue
+
+                equipment_code = self._convert_scada_tag_to_equipment_code(scada_tag)
+                if equipment_code:
+                    consumption_entries[equipment_code] = consumption_value
+                else:
+                    logger.warning(
+                        "Cannot convert %s to equipment_code, skipping",
+                        scada_tag,
+                    )
 
             logger.info(
                 "process_batch_consumption: mo_id=%s equipment_id=%s status_mfg=%s",

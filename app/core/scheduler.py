@@ -207,6 +207,7 @@ async def plc_read_sync_task():
                 mo_id = result.get("mo_id")
                 processed_batches = int(result.get("processed_batches", 0) or 0)
                 updated_batches = int(result.get("updated_batches", 0) or 0)
+                guard_skipped_values = int(result.get("guard_skipped_values", 0) or 0)
                 failed_batches = result.get("failed_batches", []) or []
                 failed_count = len(failed_batches) if isinstance(failed_batches, list) else 0
 
@@ -217,6 +218,12 @@ async def plc_read_sync_task():
                     updated_batches,
                     failed_count,
                 )
+
+                if guard_skipped_values > 0:
+                    logger.warning(
+                        "[TASK 2] Guard skipped %s implausible PLC value(s) this cycle.",
+                        guard_skipped_values,
+                    )
 
                 if updated_batches > 0:
                     logger.info(
@@ -410,8 +417,26 @@ async def process_completed_batches_task():
                                 batch_data[consumption_field] = float(value)
                                 silo_consumption_count += 1
                                 logger.debug(f"[TASK 3-DEBUG-8] Silo {letter.upper()}: {value}")
+
+                    liquid_consumption_count = 0
+                    liquid_map = {
+                        "actual_consumption_lq_tetes": "consumption_lq_tetes",
+                        "actual_consumption_lq_fml": "consumption_lq_fml",
+                    }
+                    for actual_field, consumption_field in liquid_map.items():
+                        if hasattr(batch, actual_field):
+                            value = getattr(batch, actual_field)
+                            if value is not None and value > 0:
+                                batch_data[consumption_field] = float(value)
+                                liquid_consumption_count += 1
+                                logger.debug(
+                                    f"[TASK 3-DEBUG-8L] {consumption_field}: {value}"
+                                )
                     
-                    logger.debug(f"[TASK 3-DEBUG-9] Total silos with consumption: {silo_consumption_count}")
+                    logger.debug(
+                        f"[TASK 3-DEBUG-9] Total silos with consumption: {silo_consumption_count}, "
+                        f"liquids with consumption: {liquid_consumption_count}"
+                    )
                     logger.debug(f"[TASK 3-DEBUG-10] Complete batch payload: {batch_data}")
                     
                     # Send to Odoo

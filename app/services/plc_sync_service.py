@@ -29,9 +29,46 @@ logger = logging.getLogger(__name__)
 class PLCSyncService:
     """Service to sync PLC data to mo_batch table"""
 
+    MAX_REASONABLE_ACTUAL_CONSUMPTION = 5000.0
+    MAX_REASONABLE_WEIGHT = 10000000.0
+
     def __init__(self):
         self.plc_read_service = get_plc_read_service()
         self.consumption_service = get_consumption_service()
+
+    def _sanitize_numeric_for_update(
+        self,
+        raw_value: Any,
+        field_name: str,
+        *,
+        minimum: float = 0.0,
+        maximum: float,
+    ) -> Optional[float]:
+        """Return float if value is within plausible range, else None (skip update)."""
+        if raw_value is None:
+            return None
+
+        try:
+            numeric = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Skip %s update: non-numeric PLC value=%r",
+                field_name,
+                raw_value,
+            )
+            return None
+
+        if numeric < minimum or numeric > maximum:
+            logger.warning(
+                "Skip %s update: out-of-range PLC value=%s (expected %.3f..%.3f)",
+                field_name,
+                numeric,
+                minimum,
+                maximum,
+            )
+            return None
+
+        return numeric
 
     def _normalize_binary_status(
         self,
@@ -99,6 +136,7 @@ class PLCSyncService:
         try:
             processed_batches = 0
             updated_batches = 0
+            guard_skipped_values = 0
             failed_batches: List[Dict[str, Any]] = []
             mo_ids: List[str] = []
             first_mo_id: Optional[str] = None
@@ -164,7 +202,8 @@ class PLCSyncService:
                         get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
                         continue
 
-                    updated = await self._update_batch_if_changed(session, batch, plc_data)
+                    updated, skipped_values = await self._update_batch_if_changed(session, batch, plc_data)
+                    guard_skipped_values += skipped_values
                     if updated:
                         session.commit()
                         updated_batches += 1
@@ -185,6 +224,7 @@ class PLCSyncService:
                     "updated": False,
                     "processed_batches": 0,
                     "updated_batches": 0,
+                    "guard_skipped_values": guard_skipped_values,
                     "failed_batches": failed_batches,
                     "mo_ids": [],
                 }
@@ -199,6 +239,7 @@ class PLCSyncService:
                 ),
                 "processed_batches": processed_batches,
                 "updated_batches": updated_batches,
+                "guard_skipped_values": guard_skipped_values,
                 "failed_batches": failed_batches,
                 "mo_ids": mo_ids,
             }
@@ -300,6 +341,7 @@ class PLCSyncService:
             processed_batches = 0
             updated_batches = 0
             synced_batches = 0
+            guard_skipped_values = 0
             failed_batches: List[Dict[str, Any]] = []
             first_mo_id: Optional[str] = None
 
@@ -359,7 +401,8 @@ class PLCSyncService:
                         get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
                         continue
 
-                    updated = await self._update_batch_if_changed(session, batch, plc_data)
+                    updated, skipped_values = await self._update_batch_if_changed(session, batch, plc_data)
+                    guard_skipped_values += skipped_values
                     if updated:
                         session.commit()
                         updated_batches += 1
@@ -386,6 +429,7 @@ class PLCSyncService:
                     "processed_batches": 0,
                     "updated_batches": 0,
                     "synced_batches": 0,
+                    "guard_skipped_values": guard_skipped_values,
                     "failed_batches": failed_batches,
                 }
 
@@ -395,6 +439,7 @@ class PLCSyncService:
                 "processed_batches": processed_batches,
                 "updated_batches": updated_batches,
                 "synced_batches": synced_batches,
+                "guard_skipped_values": guard_skipped_values,
                 "failed_batches": failed_batches,
             }
 
@@ -411,7 +456,7 @@ class PLCSyncService:
 
     async def _update_batch_if_changed(
         self, session: Session, batch: TableSmoBatch, plc_data: Dict[str, Any]
-    ) -> bool:
+    ) -> tuple[bool, int]:
         """
         Update batch fields if values have changed.
 
@@ -433,9 +478,10 @@ class PLCSyncService:
                 f"status_manufacturing already completed (1). "
                 f"Batch is being/been processed for Odoo completion."
             )
-            return False
+            return (False, 0)
 
         changed = False
+        guard_skipped_values = 0
 
         # Expected payload shape from PLCReadService.read_batch_data(batch_no):
         # - batch_no
@@ -448,39 +494,40 @@ class PLCSyncService:
         status_payload = plc_data.get("status")
         status_obj = status_payload if isinstance(status_payload, dict) else {}
 
-        # Map silo letters to consumption values from PLC
-        silo_map = {
-            "a": "SILO ID 101 Consumption",
-            "b": "SILO ID 102 Consumption",
-            "c": "SILO ID 103 Consumption",
-            "d": "SILO ID 104 Consumption",
-            "e": "SILO ID 105 Consumption",
-            "f": "SILO ID 106 Consumption",
-            "g": "SILO ID 107 Consumption",
-            "h": "SILO ID 108 Consumption",
-            "i": "SILO ID 109 Consumption",
-            "j": "SILO ID 110 Consumption",
-            "k": "SILO ID 111 Consumption",
-            "l": "SILO ID 112 Consumption",
-            "m": "SILO ID 113 Consumption",
-        }
-
-        # Update actual consumption for each silo
+        # Update actual consumption for each silo dynamically from payload
         silos = plc_data.get("silos", {})
-        for letter, field_name in silo_map.items():
-            silo_data = silos.get(letter, {})
-            new_consumption = silo_data.get("consumption")
+        if isinstance(silos, dict):
+            for letter, silo_data in silos.items():
+                if not isinstance(letter, str) or not isinstance(silo_data, dict):
+                    continue
 
-            if new_consumption is not None:
-                attr_name = f"actual_consumption_silo_{letter}"
+                normalized_letter = letter.strip().lower()
+                if len(normalized_letter) != 1 or not normalized_letter.isalpha():
+                    continue
+
+                attr_name = f"actual_consumption_silo_{normalized_letter}"
+                if not hasattr(batch, attr_name):
+                    continue
+
+                new_consumption = silo_data.get("consumption")
+                if new_consumption is None:
+                    continue
+
+                sanitized = self._sanitize_numeric_for_update(
+                    new_consumption,
+                    attr_name,
+                    maximum=self.MAX_REASONABLE_ACTUAL_CONSUMPTION,
+                )
+                if sanitized is None:
+                    guard_skipped_values += 1
+                    continue
+
                 current_value = getattr(batch, attr_name)
-
-                # Update if value changed
-                if current_value != new_consumption:
-                    setattr(batch, attr_name, new_consumption)
+                if current_value != sanitized:
+                    setattr(batch, attr_name, sanitized)
                     changed = True
                     logger.debug(
-                        f"Updated {attr_name}: {current_value} → {new_consumption}"
+                        f"Updated {attr_name}: {current_value} → {sanitized}"
                     )
 
         # Update liquid actual consumption (LQ114/LQ115)
@@ -495,12 +542,21 @@ class PLCSyncService:
             if new_consumption is None:
                 continue
 
+            sanitized = self._sanitize_numeric_for_update(
+                new_consumption,
+                attr_name,
+                maximum=self.MAX_REASONABLE_ACTUAL_CONSUMPTION,
+            )
+            if sanitized is None:
+                guard_skipped_values += 1
+                continue
+
             current_value = getattr(batch, attr_name)
-            if current_value != new_consumption:
-                setattr(batch, attr_name, new_consumption)
+            if current_value != sanitized:
+                setattr(batch, attr_name, sanitized)
                 changed = True
                 logger.debug(
-                    f"Updated {attr_name}: {current_value} → {new_consumption}"
+                    f"Updated {attr_name}: {current_value} → {sanitized}"
                 )
 
         # Update actual weight quantity finished goods
@@ -509,12 +565,19 @@ class PLCSyncService:
             # Backward compatibility with previous key naming
             new_quantity = plc_data.get("quantity_goods")
         if new_quantity is not None:
-            if batch.actual_weight_quantity_finished_goods != new_quantity:
-                batch.actual_weight_quantity_finished_goods = new_quantity
+            sanitized_quantity = self._sanitize_numeric_for_update(
+                new_quantity,
+                "actual_weight_quantity_finished_goods",
+                maximum=self.MAX_REASONABLE_WEIGHT,
+            )
+            if sanitized_quantity is None:
+                guard_skipped_values += 1
+            elif batch.actual_weight_quantity_finished_goods != sanitized_quantity:
+                batch.actual_weight_quantity_finished_goods = sanitized_quantity
                 changed = True
                 logger.debug(
                     f"Updated actual_weight_quantity_finished_goods: "
-                    f"{batch.actual_weight_quantity_finished_goods} → {new_quantity}"
+                    f"{batch.actual_weight_quantity_finished_goods} → {sanitized_quantity}"
                 )
 
         # Update status fields (but only if DB is not yet marked complete)
@@ -553,7 +616,7 @@ class PLCSyncService:
                 "status_operation",
             )
             if status_bool is None:
-                return changed
+                return (changed, guard_skipped_values)
             current_status_op: bool = batch.status_operation  # type: ignore
             logger.debug(
                 "Status operation check: plc=%s db=%s mo_id=%s batch_no=%s",
@@ -632,7 +695,7 @@ class PLCSyncService:
                             # Continue to update status_operation to mark the failure
                             batch.status_operation = status_bool  # type: ignore
                             changed = True
-                            return changed
+                            return (changed, guard_skipped_values)
                     else:
                         logger.info(
                             f"⏩ Odoo cancel already completed for batch #{batch_no} (MO: {mo_id}), "
@@ -679,7 +742,7 @@ class PLCSyncService:
                         )
                         # Return immediately - batch is now archived and deleted
                         # No need to update status_operation field
-                        return False  # No changes to mo_batch (already deleted)
+                        return (False, guard_skipped_values)  # No changes to mo_batch (already deleted)
                     else:
                         logger.error(
                             f"✗ Failed to archive cancelled batch #{batch_no}: "
@@ -706,7 +769,7 @@ class PLCSyncService:
         if changed:
             batch.last_read_from_plc = datetime.now(timezone.utc)  # type: ignore
 
-        return changed
+        return (changed, guard_skipped_values)
 
 
 # Singleton instance

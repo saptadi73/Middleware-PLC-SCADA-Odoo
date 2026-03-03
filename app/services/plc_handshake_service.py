@@ -25,9 +25,10 @@ Equipment Failure Handshaking (D8022):
 import json
 import logging
 from pathlib import Path
+import re
 import socket
 import time
-from typing import Literal, Optional
+from typing import Dict, Literal, Optional
 
 from app.core.config import get_settings
 from app.services.fins_client import FinsUdpClient
@@ -56,6 +57,48 @@ class PLCHandshakeService:
     
     def __init__(self):
         self.settings = get_settings()
+        self._read_status_by_batch: Dict[int, int] = {}
+        self._load_read_status_addresses_from_mapping()
+
+    def _load_read_status_addresses_from_mapping(self) -> None:
+        """Load per-batch status_read_data addresses from READ_DATA_PLC_MAPPING.json."""
+        reference_path = Path(__file__).parent.parent / "reference" / "READ_DATA_PLC_MAPPING.json"
+        if not reference_path.exists():
+            logger.warning(
+                "READ_DATA_PLC_MAPPING.json not found at %s; using handshake fallback addresses",
+                reference_path,
+            )
+            return
+
+        try:
+            data = json.loads(reference_path.read_text(encoding="utf-8"))
+            loaded_count = 0
+            for batch_no in range(self.READ_BATCH_MIN, self.READ_BATCH_MAX + 1):
+                key = f"BATCH_READ_{batch_no:02d}"
+                fields = data.get(key, [])
+                for field in fields:
+                    info = str(field.get("Informasi") or "").strip().lower()
+                    if info != "status_read_data":
+                        continue
+
+                    dm = str(field.get("DM") or field.get("DM - Memory") or "").strip().upper()
+                    match = re.match(r"D(\d+)", dm)
+                    if not match:
+                        continue
+
+                    self._read_status_by_batch[batch_no] = int(match.group(1))
+                    loaded_count += 1
+                    break
+
+            if loaded_count:
+                logger.info("Loaded READ handshake addresses from mapping: %s batch(es)", loaded_count)
+            else:
+                logger.warning("No status_read_data addresses found in READ mapping; using fallback addresses")
+        except Exception as exc:
+            logger.warning(
+                "Failed loading READ handshake addresses from mapping: %s. Using fallback addresses.",
+                exc,
+            )
     
     def check_write_area_status(self) -> bool:
         """
@@ -90,6 +133,9 @@ class PLCHandshakeService:
             raise ValueError(
                 f"batch_no must be {self.READ_BATCH_MIN}..{self.READ_BATCH_MAX}, got {batch_no}"
             )
+        mapped_address = self._read_status_by_batch.get(batch_no)
+        if mapped_address is not None:
+            return mapped_address
         return self.READ_BATCH_STATUS_START + (
             (batch_no - self.READ_BATCH_MIN) * self.READ_BATCH_STATUS_STEP
         )

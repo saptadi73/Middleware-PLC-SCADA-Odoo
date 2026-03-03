@@ -8,7 +8,6 @@ Supports 15 equipment: 13 Silos (101-113) + 2 Liquid Tanks (114-115)
 
 import argparse
 import asyncio
-import json
 import logging
 import re
 import sys
@@ -21,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from app.core.config import get_settings
 from app.services.fins_client import FinsUdpClient
 from app.services.fins_frames import build_memory_write_frame, parse_memory_write_response
+from app.services.plc_read_service import get_plc_read_service
 from app.services.odoo_auth_service import fetch_mo_list_detailed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -58,11 +58,8 @@ class OdooReadAreaWriter:
         self.settings = get_settings()
         self.write_retries = max(0, int(write_retries))
         self.retry_delay_sec = max(0.0, float(retry_delay_sec))
-        mapping_path = (
-            Path(__file__).parent / "app" / "reference" / "READ_DATA_PLC_MAPPING.json"
-        )
-        with mapping_path.open("r", encoding="utf-8") as handle:
-            self.mapping = json.load(handle).get("raw_list", [])
+        read_service = get_plc_read_service()
+        self.mapping = read_service._get_batch_mapping(1)
 
     def _parse_dm_address(self, dm_str: str) -> tuple[int, int]:
         dm_str = dm_str.strip().upper().replace(" ", "")
@@ -119,6 +116,13 @@ class OdooReadAreaWriter:
                 return [(unsigned_value >> 16) & 0xFFFF, unsigned_value & 0xFFFF]
             return [scaled_value & 0xFFFF]
 
+        if data_type == "INT":
+            int_value = int(value or 0)
+            if word_count >= 2:
+                unsigned_value = int_value & 0xFFFFFFFF
+                return [(unsigned_value >> 16) & 0xFFFF, unsigned_value & 0xFFFF]
+            return [int_value & 0xFFFF]
+
         raise ValueError(f"Unsupported data type: {data_type}")
 
     def _write_words(self, address: int, words: List[int]) -> None:
@@ -164,7 +168,7 @@ class OdooReadAreaWriter:
             if not field_name or field_name not in payload:
                 continue
 
-            dm_address = str(field_def.get("DM - Memory") or "").strip()
+            dm_address = str(field_def.get("DM") or field_def.get("DM - Memory") or "").strip()
             data_type = str(field_def.get("Data Type") or "").strip()
             length = field_def.get("length")
             scale = field_def.get("scale")

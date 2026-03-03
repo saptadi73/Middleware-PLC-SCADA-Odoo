@@ -1,0 +1,1 @@
+python tools\export_batch_read_snapshot_csv.py --all --out-dir snapshots

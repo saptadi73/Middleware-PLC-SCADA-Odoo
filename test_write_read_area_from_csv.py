@@ -98,6 +98,25 @@ class ReadAreaCsvWriter:
 
             return [scaled_value]
 
+        if data_type == "INT":
+            if value is None or value == "":
+                return [0]
+
+            int_value = int(float(value))
+
+            # If mapping uses 2 words, write as signed 32-bit
+            if word_count and word_count >= 2:
+                unsigned_value = int_value & 0xFFFFFFFF
+                upper = (unsigned_value >> 16) & 0xFFFF
+                lower = unsigned_value & 0xFFFF
+                return [upper, lower]
+
+            # 1-word signed INT16
+            if int_value < -32768 or int_value > 32767:
+                raise ValueError(f"INT16 out of range: {int_value}")
+
+            return [int_value & 0xFFFF]
+
         if data_type == "ASCII":
             text_value = str(value) if value is not None else ""
             expected_words = int((length or len(text_value) + 1) / 2)

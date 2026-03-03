@@ -163,6 +163,8 @@ class PLCReadService:
         scale: Optional[float],
         field_name: str,
         decoded_value: Any,
+        emit_log: bool = True,
+        anomaly_collector: Optional[List[str]] = None,
     ) -> Any:
         """Normalize REAL field values for known PLC torn-read/word-order anomalies."""
         if len(words) < 2 or not isinstance(decoded_value, (int, float)):
@@ -200,14 +202,26 @@ class PLCReadService:
 
         if candidates:
             selected_source, selected_value = max(candidates, key=lambda item: item[1])
-            logger.warning(
-                "Normalized REAL field '%s' using %s candidate (decoded=%s, selected=%s)",
-                field_name,
-                selected_source,
-                decoded_value,
-                selected_value,
+            message = (
+                f"{field_name}: normalized REAL using {selected_source} "
+                f"(decoded={decoded_value}, selected={selected_value})"
             )
+            if anomaly_collector is not None:
+                anomaly_collector.append(message)
+            if emit_log:
+                logger.warning(
+                    "Normalized REAL field '%s' using %s candidate (decoded=%s, selected=%s)",
+                    field_name,
+                    selected_source,
+                    decoded_value,
+                    selected_value,
+                )
             return selected_value
+
+        if anomaly_collector is not None:
+            anomaly_collector.append(
+                f"{field_name}: REAL out-of-range unresolved (decoded={decoded_value}, limit={field_limit})"
+            )
 
         return decoded_value
 
@@ -225,6 +239,8 @@ class PLCReadService:
         words: List[int],
         field_name: str,
         decoded_value: Any,
+        emit_log: bool = True,
+        anomaly_collector: Optional[List[str]] = None,
     ) -> Any:
         """Normalize INT fields for SILO/LQ IDs when PLC word noise appears."""
         if not words:
@@ -252,13 +268,18 @@ class PLCReadService:
         if 1 <= candidate <= 1000:
             return candidate
 
-        logger.warning(
-            "Normalized INT ID field '%s' to expected ID %s (raw=%s, decoded=%s)",
-            field_name,
-            expected_id,
-            unsigned,
-            decoded_value,
-        )
+        if anomaly_collector is not None:
+            anomaly_collector.append(
+                f"{field_name}: normalized INT ID to expected={expected_id} (raw={unsigned}, decoded={decoded_value})"
+            )
+        if emit_log:
+            logger.warning(
+                "Normalized INT ID field '%s' to expected ID %s (raw=%s, decoded=%s)",
+                field_name,
+                expected_id,
+                unsigned,
+                decoded_value,
+            )
         return expected_id
 
     def _resolve_dm_string(self, field_def: Dict[str, Any]) -> str:
@@ -505,43 +526,73 @@ class PLCReadService:
         if isinstance(finished_goods, str) and len(finished_goods.strip()) >= 4:
             score += 1
 
-        try:
-            silo_101 = self._convert_from_words(words[28:30], "REAL", 100)
-            silo_101 = self._normalize_real_field_value(
-                words[28:30],
-                100,
-                "SILO ID 101 Consumption",
-                silo_101,
-            )
-            if 0 <= float(silo_101) <= self.MAX_REASONABLE_SILO_CONSUMPTION:
-                score += 1
-            else:
+        for consumption_field in (
+            "SILO ID 101 Consumption",
+            "SILO ID 102 Consumption",
+        ):
+            try:
+                field_def = next(
+                    item
+                    for item in self._get_batch_mapping(1)
+                    if str(item.get("Informasi") or "") == consumption_field
+                )
+                value = self._decode_field_from_snapshot(
+                    words=words,
+                    field_def=field_def,
+                    batch_no=1,
+                    anomaly_collector=[],
+                )
+                if 0 <= float(value) <= self.MAX_REASONABLE_SILO_CONSUMPTION:
+                    score += 1
+                else:
+                    score -= 1
+            except Exception:
                 score -= 1
-        except Exception:
-            score -= 1
-
-        try:
-            silo_102 = self._convert_from_words(words[31:33], "REAL", 100)
-            silo_102 = self._normalize_real_field_value(
-                words[31:33],
-                100,
-                "SILO ID 102 Consumption",
-                silo_102,
-            )
-            if 0 <= float(silo_102) <= self.MAX_REASONABLE_SILO_CONSUMPTION:
-                score += 1
-            else:
-                score -= 1
-        except Exception:
-            score -= 1
 
         return score
+
+    def _extract_equipment_data(self, all_fields: Dict[str, Any]) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+        """Build silo/liquid payload dynamically from mapping field names."""
+        silos_by_id: Dict[int, Dict[str, Any]] = {}
+        liquids_by_id: Dict[int, Dict[str, Any]] = {}
+
+        for field_name, value in all_fields.items():
+            normalized = str(field_name or "")
+            upper_name = normalized.upper()
+
+            id_match = re.match(r"^(SILO|LQ)\s+ID\s+(\d+)\b", upper_name)
+            if not id_match:
+                continue
+
+            equipment_type = id_match.group(1)
+            equipment_id = int(id_match.group(2))
+            bucket = silos_by_id if equipment_type == "SILO" else liquids_by_id
+            entry = bucket.setdefault(equipment_id, {"id": equipment_id, "consumption": 0})
+
+            if "CONSUMPTION" in upper_name:
+                entry["consumption"] = value
+            else:
+                entry["id"] = value
+
+        silos: Dict[str, Dict[str, Any]] = {}
+        for equipment_id in sorted(silos_by_id.keys()):
+            if 101 <= equipment_id <= 113:
+                letter = chr(ord("a") + (equipment_id - 101))
+                silos[letter] = silos_by_id[equipment_id]
+
+        liquids: Dict[str, Dict[str, Any]] = {}
+        for equipment_id in sorted(liquids_by_id.keys()):
+            if equipment_id in (114, 115):
+                liquids[f"lq{equipment_id}"] = liquids_by_id[equipment_id]
+
+        return silos, liquids
 
     def _decode_field_from_snapshot(
         self,
         words: List[int],
         field_def: Dict[str, Any],
         batch_no: int,
+        anomaly_collector: Optional[List[str]] = None,
     ) -> Any:
         field_name = str(field_def.get("Informasi") or "")
         dm_str = self._resolve_dm_string(field_def)
@@ -560,13 +611,21 @@ class PLCReadService:
         scale = field_def.get("scale")
         value = self._convert_from_words(slice_words, data_type, scale)
         if data_type.upper() == "INT" and field_name != "BATCH":
-            value = self._normalize_int_field_value(slice_words, field_name, value)
+            value = self._normalize_int_field_value(
+                slice_words,
+                field_name,
+                value,
+                emit_log=anomaly_collector is None,
+                anomaly_collector=anomaly_collector,
+            )
         if data_type.upper() == "REAL":
             value = self._normalize_real_field_value(
                 slice_words,
                 scale,
                 field_name,
                 value,
+                emit_log=anomaly_collector is None,
+                anomaly_collector=anomaly_collector,
             )
 
         if field_name == "BATCH" and slice_words:
@@ -672,17 +731,18 @@ class PLCReadService:
 
     def read_all_fields(self, batch_no: int = 1) -> Dict[str, Any]:
         """Read all fields for one batch."""
-        all_fields, _, _ = self._read_all_fields_with_quality(batch_no=batch_no)
+        all_fields, _, _, _ = self._read_all_fields_with_quality(batch_no=batch_no)
         return all_fields
 
-    def _read_all_fields_with_quality(self, batch_no: int = 1) -> tuple[Dict[str, Any], int, bool]:
+    def _read_all_fields_with_quality(self, batch_no: int = 1) -> tuple[Dict[str, Any], int, bool, List[str]]:
         """Read all fields plus snapshot quality metadata."""
         mapping = self._get_batch_mapping(batch_no)
         result: Dict[str, Any] = {}
+        anomalies: List[str] = []
         snapshot_words, snapshot_score, strict_valid = self._read_batch_snapshot_with_quality(batch_no)
 
         if not snapshot_words:
-            return (result, -1, False)
+            return (result, -1, False, anomalies)
 
         for field_def in mapping:
             field_name = field_def.get("Informasi")
@@ -693,6 +753,7 @@ class PLCReadService:
                     snapshot_words,
                     field_def,
                     batch_no,
+                    anomaly_collector=anomalies,
                 )
             except Exception as exc:
                 logger.error(
@@ -703,11 +764,11 @@ class PLCReadService:
                 )
                 result[str(field_name)] = None
 
-        return (result, snapshot_score, strict_valid)
+        return (result, snapshot_score, strict_valid, anomalies)
 
     def read_batch_data(self, batch_no: int = 1) -> Dict[str, Any]:
         """Read and format one batch payload from PLC."""
-        all_fields, snapshot_score, strict_valid = self._read_all_fields_with_quality(batch_no=batch_no)
+        all_fields, snapshot_score, strict_valid, anomalies = self._read_all_fields_with_quality(batch_no=batch_no)
 
         parsed_batch_no = all_fields.get("BATCH", batch_no)
         try:
@@ -732,6 +793,7 @@ class PLCReadService:
             "quality": {
                 "snapshot_score": snapshot_score,
                 "strict_valid": strict_valid,
+                "anomaly_count": len(anomalies),
             },
             "silos": {},
             "status": {
@@ -768,41 +830,18 @@ class PLCReadService:
         if mo_id_candidate:
             batch_data["mo_id"] = mo_id_candidate
 
-        silo_mapping = {
-            101: "a",
-            102: "b",
-            103: "c",
-            104: "d",
-            105: "e",
-            106: "f",
-            107: "g",
-            108: "h",
-            109: "i",
-            110: "j",
-            111: "k",
-            112: "l",
-            113: "m",
-        }
+        silos, liquids = self._extract_equipment_data(all_fields)
+        batch_data["silos"] = silos
+        batch_data["liquids"] = liquids
 
-        for silo_num, letter in silo_mapping.items():
-            id_key = f"SILO ID {silo_num}" if silo_num >= 104 else f"SILO ID {silo_num} (SILO BESAR)"
-            consumption_key = f"SILO ID {silo_num} Consumption"
-            batch_data["silos"][letter] = {
-                "id": all_fields.get(id_key, silo_num),
-                "consumption": all_fields.get(consumption_key, 0),
-            }
-
-        # Liquid tanks
-        batch_data["liquids"] = {
-            "lq114": {
-                "id": all_fields.get("LQ ID 114", 114),
-                "consumption": all_fields.get("LQ ID 114 Consumption", 0),
-            },
-            "lq115": {
-                "id": all_fields.get("LQ ID 115", 115),
-                "consumption": all_fields.get("LQ ID 115 Consumption", 0),
-            },
-        }
+        if anomalies:
+            preview = "; ".join(anomalies[:3])
+            logger.warning(
+                "Batch=%s read anomalies=%s (showing up to 3): %s",
+                batch_no,
+                len(anomalies),
+                preview,
+            )
 
         return batch_data
 

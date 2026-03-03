@@ -78,25 +78,17 @@ def load_fields() -> List[Dict[str, Any]]:
 
 def choose_node_combo() -> Tuple[int, int]:
     settings = get_settings()
-    combos = [
-        (settings.client_node, settings.plc_node),
-        (10, 2),
-        (1, 0),
-        (10, 0),
-        (1, 2),
-    ]
-    seen: set[Tuple[int, int]] = set()
-    unique_combos = [c for c in combos if not (c in seen or seen.add(c))]
-
-    for client_node, plc_node in unique_combos:
-        try:
-            words = read_words(7000, 1, client_node, plc_node, timeout_sec=0.7)
-            if words:
-                return client_node, plc_node
-        except Exception:
-            continue
-
-    raise RuntimeError("No working FINS node combination found.")
+    client_node = int(settings.client_node)
+    plc_node = int(settings.plc_node)
+    try:
+        words = read_words(7000, 1, client_node, plc_node, timeout_sec=0.7)
+        if not words:
+            raise RuntimeError("empty probe response")
+    except Exception as exc:
+        raise RuntimeError(
+            f"FINS probe failed using .env nodes client={client_node}, plc={plc_node}: {exc}"
+        ) from exc
+    return client_node, plc_node
 
 
 def read_words(
