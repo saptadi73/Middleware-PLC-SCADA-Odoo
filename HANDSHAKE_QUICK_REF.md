@@ -1,97 +1,52 @@
-﻿# Handshake Quick Reference
+# Handshake Quick Reference
 
 ## Memory Addresses
 
 | Area | Data Range | Status Flag | Default | Purpose |
 |------|-----------|-------------|---------|---------|
-| **READ** | per-batch READ payload (e.g. BATCH_READ_01: D6000-D6075) | **D6076/D6176/.../D6976** | 0 | Middleware marks after reading production data |
-| **WRITE** | D7000-D7075 | **D7076** | 0 | PLC marks after reading batch recipe |
-| **FAILURE** | D8000-D8021 | **D8022** | 0 | Middleware marks after reading equipment failure |
+| READ | per-batch READ payload (BATCH_READ_01..10) | D6076/D6176/.../D6976 | 0 | Middleware marks only for completed read batches (status_manufacturing=1) |
+| WRITE | D7000-D7075 | D7076 | 0 | PLC readiness flag before middleware writes next batch |
+| FAILURE | D8000-D8021 | D8022 | 0 | Middleware marks equipment failure data as read |
+| MANUAL WEIGHING | D9000-D9012 | D9013 | 0 | Middleware marks manual weighing data as read |
 
 ## Protocol Rules
 
-### READ Area (Production Data)
-```
-PLC: Writes per-batch READ payload (e.g. BATCH_READ_01: D6000-D6075) â†’ Sets status_read_data per-batch=0
-Middleware: Reads data â†’ Sets status_read_data per-batch=1
-PLC: Sees status_read_data per-batch=1 â†’ Resets status_read_data per-batch=0 (next cycle)
-```
+### READ Area (Production Feedback)
+- PLC writes per-batch data and keeps per-batch status_read_data at 0 while pending.
+- Middleware reads per-batch data.
+- Middleware sets per-batch status_read_data = 1 **only if** status_manufacturing=1 for that batch read.
+- PLC resets per-batch status_read_data to 0 when next cycle is ready.
 
-### WRITE Area (Batch Recipe)
-```
-Middleware: Checks D7076
-  - If D7076=0: SKIP WRITE (PLC busy)
-  - If D7076=1: WRITE D7000-D7075 â†’ Set D7076=0
-PLC: Reads batch â†’ Sets D7076=1 (ready for next)
-```
+### WRITE Area (Batch Command)
+- Middleware checks D7076 before writing.
+- If D7076=0: skip write (PLC not ready).
+- If D7076=1: write batch command and reset D7076=0.
+- PLC sets D7076=1 after reading current command batch.
 
 ### Equipment Failure
-```
-PLC: Writes D8000-D8021 â†’ Sets D8022=0
-Middleware: Reads failure â†’ Sets D8022=1
-PLC: Sees D8022=1 â†’ Resets D8022=0 (next failure)
-```
+- PLC writes D8000-D8021, keeps D8022=0 until read.
+- Middleware reads and sets D8022=1.
+- PLC resets D8022=0 for next event.
 
-## Code Examples
+### Manual Weighing
+- PLC writes D9000-D9012, keeps D9013=0 until read.
+- Middleware reads and sets D9013=1 after successful processing.
+- PLC resets D9013=0 for next entry.
 
-### Import
+## Code Usage
+
 ```python
 from app.services.plc_handshake_service import get_handshake_service
 handshake = get_handshake_service()
-```
 
-### Check Before Write
-```python
+# WRITE readiness
 if handshake.check_write_area_status():
-    # D7076=1, safe to write
-    service.write_batch("BATCH01", data)
-else:
-    # D7076=0, PLC busy
-    print("Wait for PLC")
+    # safe to write
+    ...
+
+# READ completed batch acknowledgement (status_manufacturing=1)
+handshake.mark_read_area_as_read(batch_no=1)
+
+# Manual weighing acknowledgement
+handshake.mark_manual_weighing_as_read()
 ```
-
-### Mark After Read
-```python
-# After reading production data
-handshake.mark_read_area_as_read()  # status_read_data per-batch=1
-
-# After reading equipment failure
-handshake.mark_equipment_failure_as_read()  # D8022=1
-```
-
-### Testing/Reset
-```python
-# Reset flags for testing
-handshake.reset_read_area_status()       # status_read_data per-batch=0
-handshake.reset_write_area_status()      # D7076=0
-handshake.reset_equipment_failure_status()  # D8022=0
-```
-
-## Service Integration
-
-**Auto-Enabled:**
-- `plc_sync_service.py` â†’ marks status_read_data per-batch=1 after sync
-- `plc_equipment_failure_service.py` â†’ marks D8022=1 after read
-- `plc_write_service.py` â†’ checks D7076 before write, resets after
-
-**Manual Override:**
-```python
-# Skip handshake check (testing only)
-write_service.write_batch("BATCH01", data, skip_handshake_check=True)
-```
-
-## Test
-```bash
-python test_handshake.py
-```
-
-## First Deployment
-
-âš ï¸ **Important:** Set D7076=1 initially to allow first batch write:
-```python
-from app.services.plc_handshake_service import PLCHandshakeService
-service = PLCHandshakeService()
-service._write_status_flag(7076, 1)
-```
-
-

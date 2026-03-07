@@ -58,7 +58,10 @@ class PLCHandshakeService:
     def __init__(self):
         self.settings = get_settings()
         self._read_status_by_batch: Dict[int, int] = {}
+        self._write_status_by_batch: Dict[int, int] = {}
+        self._write_mo_field_by_batch: Dict[int, tuple[int, int]] = {}
         self._load_read_status_addresses_from_mapping()
+        self._load_write_addresses_from_mapping()
 
     def _load_read_status_addresses_from_mapping(self) -> None:
         """Load per-batch status_read_data addresses from READ_DATA_PLC_MAPPING.json."""
@@ -109,23 +112,201 @@ class PLCHandshakeService:
             False: PLC hasn't read yet (D7076 = 0), should NOT write
         """
         try:
-            status = self._read_status_flag(self.WRITE_AREA_STATUS_ADDRESS)
-            
-            if status == 1:
+            primary_status = self._read_status_flag(self.WRITE_AREA_STATUS_ADDRESS)
+
+            if primary_status == 1:
                 logger.info(
                     "WRITE area handshake: PLC has read batch data (D7076=1). Safe to write."
                 )
                 return True
-            else:
+
+            status_map = self._read_all_write_status_flags()
+            occupied_slots = self._get_non_empty_write_mo_slots()
+            has_any_status_read = any(flag == 1 for flag in status_map.values())
+
+            if not occupied_slots and not has_any_status_read:
                 logger.warning(
-                    "WRITE area handshake: PLC hasn't read yet (D7076=0). Skip write to avoid overwrite."
+                    "WRITE area handshake: D7076=0 but WRITE queue appears empty/clean "
+                    "(all status_read_data=0 and NO-MO empty). Treating as READY for initial write."
                 )
-                return False
-                
+                return True
+
+            logger.warning(
+                "WRITE area handshake: not ready (D7076=0). occupied_slots=%s, any_status_read=%s",
+                occupied_slots,
+                has_any_status_read,
+            )
+            return False
+
         except Exception as exc:
             logger.error(f"Error checking WRITE area status: {exc}", exc_info=True)
             # Default to False (safer - don't write if status unknown)
             return False
+
+    def _load_write_addresses_from_mapping(self) -> None:
+        """Load WRITE status_read_data and NO-MO addresses from MASTER_BATCH_REFERENCE.json."""
+        reference_path = Path(__file__).parent.parent / "reference" / "MASTER_BATCH_REFERENCE.json"
+        if not reference_path.exists():
+            logger.warning(
+                "MASTER_BATCH_REFERENCE.json not found at %s; using D7076-only handshake check",
+                reference_path,
+            )
+            return
+
+        try:
+            data = json.loads(reference_path.read_text(encoding="utf-8"))
+            loaded_status = 0
+            loaded_mo = 0
+            for key, fields in data.items():
+                match_key = re.match(r"(?:WRITE_)?BATCH(\d+)$", str(key).strip().upper())
+                if not match_key:
+                    continue
+
+                batch_no = int(match_key.group(1))
+                for field in fields:
+                    info = str(field.get("Informasi") or "").strip().lower()
+                    dm = str(field.get("DM") or field.get("DM - Memory") or "").strip().upper()
+                    if not dm:
+                        continue
+
+                    if info == "status_read_data":
+                        status_match = re.match(r"D(\d+)", dm)
+                        if status_match:
+                            self._write_status_by_batch[batch_no] = int(status_match.group(1))
+                            loaded_status += 1
+                    elif info == "no-mo":
+                        try:
+                            self._write_mo_field_by_batch[batch_no] = self._parse_dm_range(dm)
+                            loaded_mo += 1
+                        except ValueError:
+                            continue
+
+            if loaded_status:
+                logger.info("Loaded WRITE handshake status addresses from mapping: %s batch(es)", loaded_status)
+            else:
+                logger.warning(
+                    "No WRITE status_read_data addresses found in MASTER mapping; using D7076-only handshake check"
+                )
+
+            if loaded_mo:
+                logger.info("Loaded WRITE NO-MO addresses from mapping: %s batch(es)", loaded_mo)
+            else:
+                logger.warning("No WRITE NO-MO addresses found in MASTER mapping")
+
+        except Exception as exc:
+            logger.warning(
+                "Failed loading WRITE handshake/NO-MO addresses from mapping: %s. "
+                "Using D7076-only handshake check.",
+                exc,
+            )
+
+    def _parse_dm_range(self, dm_str: str) -> tuple[int, int]:
+        """Parse DM string to (start_address, word_count)."""
+        dm_clean = dm_str.strip().upper()
+        if "-" not in dm_clean:
+            single_match = re.match(r"D(\d+)", dm_clean)
+            if not single_match:
+                raise ValueError(f"Invalid DM format: {dm_str}")
+            return int(single_match.group(1)), 1
+
+        range_match = re.match(r"D(\d+)-(\d+)", dm_clean)
+        if not range_match:
+            raise ValueError(f"Invalid DM range format: {dm_str}")
+
+        start = int(range_match.group(1))
+        end = int(range_match.group(2))
+        if end < start:
+            raise ValueError(f"Invalid DM range order: {dm_str}")
+        return start, (end - start + 1)
+
+    def _read_words(self, address: int, count: int) -> list[int]:
+        """Read multiple words from PLC DM area with retry."""
+        max_attempts = 3
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with FinsUdpClient(
+                    ip=self.settings.plc_ip,
+                    port=self.settings.plc_port,
+                    timeout_sec=self.settings.plc_timeout_sec,
+                ) as client:
+                    request = MemoryReadRequest(area="DM", address=address, count=count)
+                    frame = build_memory_read_frame(
+                        request,
+                        self.settings.client_node,
+                        self.settings.plc_node,
+                        sid=0x00,
+                    )
+
+                    client.send_raw_hex(frame.hex())
+                    response = client.recv()
+                    words = parse_memory_read_response(response.raw, expected_count=count)
+
+                    if len(words) != count:
+                        raise ValueError(
+                            f"Unexpected word count from D{address}: expected={count}, got={len(words)}"
+                        )
+                    return words
+            except (TimeoutError, socket.timeout, ValueError) as exc:
+                last_error = exc
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Handshake multi-read timeout/error at D%s count=%s (attempt %s/%s). Retrying...",
+                        address,
+                        count,
+                        attempt,
+                        max_attempts,
+                    )
+                    time.sleep(0.1)
+                    continue
+                break
+
+        raise RuntimeError(
+            f"Handshake multi-read failed at D{address} (count={count}) after {max_attempts} attempts"
+        ) from last_error
+
+    def _read_all_write_status_flags(self) -> Dict[int, int]:
+        """Read all mapped WRITE status_read_data flags by batch number."""
+        statuses: Dict[int, int] = {}
+        for batch_no, address in sorted(self._write_status_by_batch.items()):
+            try:
+                statuses[batch_no] = self._read_status_flag(address)
+            except Exception as exc:
+                logger.warning(
+                    "Failed reading WRITE status_read_data for batch %s at D%s: %s",
+                    batch_no,
+                    address,
+                    exc,
+                )
+                statuses[batch_no] = 0
+        return statuses
+
+    def _decode_ascii_words(self, words: list[int]) -> str:
+        """Decode ASCII words (big-endian 2 chars/word) to trimmed text."""
+        raw_bytes = bytearray()
+        for word in words:
+            raw_bytes.append((word >> 8) & 0xFF)
+            raw_bytes.append(word & 0xFF)
+        return raw_bytes.decode("ascii", errors="ignore").replace("\x00", "").strip()
+
+    def _get_non_empty_write_mo_slots(self) -> list[int]:
+        """Return WRITE batch numbers whose NO-MO field is not empty."""
+        occupied: list[int] = []
+        for batch_no, (address, word_count) in sorted(self._write_mo_field_by_batch.items()):
+            try:
+                words = self._read_words(address, word_count)
+                mo_text = self._decode_ascii_words(words)
+                if mo_text:
+                    occupied.append(batch_no)
+            except Exception as exc:
+                logger.warning(
+                    "Failed reading WRITE NO-MO for batch %s at D%s: %s",
+                    batch_no,
+                    address,
+                    exc,
+                )
+        return occupied
     
     def _get_read_status_address(self, batch_no: int) -> int:
         """Resolve READ status_read_data address for batch number (1..10)."""
@@ -313,48 +494,10 @@ class PLCHandshakeService:
         Returns:
             0 or 1 (status flag value)
         """
-        max_attempts = 3
-        last_error: Exception | None = None
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                with FinsUdpClient(
-                    ip=self.settings.plc_ip,
-                    port=self.settings.plc_port,
-                    timeout_sec=self.settings.plc_timeout_sec,
-                ) as client:
-                    request = MemoryReadRequest(area="DM", address=address, count=1)
-                    frame = build_memory_read_frame(
-                        request,
-                        self.settings.client_node,
-                        self.settings.plc_node,
-                        sid=0x00,
-                    )
-
-                    client.send_raw_hex(frame.hex())
-                    response = client.recv()
-                    words = parse_memory_read_response(response.raw, expected_count=1)
-
-                    if not words:
-                        raise ValueError(f"No data returned from address D{address}")
-
-                    return 1 if words[0] != 0 else 0
-            except (TimeoutError, socket.timeout) as exc:
-                last_error = exc
-                if attempt < max_attempts:
-                    logger.warning(
-                        "Handshake read timeout at D%s (attempt %s/%s). Retrying...",
-                        address,
-                        attempt,
-                        max_attempts,
-                    )
-                    time.sleep(0.1)
-                    continue
-                break
-
-        raise RuntimeError(
-            f"Handshake read timeout at D{address} after {max_attempts} attempts"
-        ) from last_error
+        words = self._read_words(address, 1)
+        if not words:
+            raise RuntimeError(f"Handshake read failed: empty response at D{address}")
+        return 1 if words[0] != 0 else 0
     
     def _write_status_flag(self, address: int, value: int) -> None:
         """

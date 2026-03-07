@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.tablesmo_batch import TableSmoBatch
 from app.services.plc_read_service import get_plc_read_service
@@ -33,8 +34,37 @@ class PLCSyncService:
     MAX_REASONABLE_WEIGHT = 10000000.0
 
     def __init__(self):
+        settings = get_settings()
         self.plc_read_service = get_plc_read_service()
         self.consumption_service = get_consumption_service()
+        self.expected_batch_max_kg = float(settings.expected_batch_max_kg)
+        self.batch_weight_warn_margin_kg = float(settings.batch_weight_warn_margin_kg)
+        self.batch_weight_warn_limit_kg = (
+            self.expected_batch_max_kg + self.batch_weight_warn_margin_kg
+        )
+
+    def _warn_if_suspicious_batch_weight(
+        self,
+        value: Optional[float],
+        *,
+        field_name: str,
+        batch_no: int,
+        mo_id: str,
+    ) -> None:
+        if value is None:
+            return
+        if value > self.batch_weight_warn_limit_kg:
+            logger.warning(
+                "ATTENTION_SUSPICIOUS_VALUE | PLC %s | batch=%s | mo_id=%s | value=%.3f kg exceeds expected limit %.3f kg "
+                "(max=%.3f, margin=%.3f)",
+                field_name,
+                batch_no,
+                mo_id,
+                value,
+                self.batch_weight_warn_limit_kg,
+                self.expected_batch_max_kg,
+                self.batch_weight_warn_margin_kg,
+            )
 
     def _sanitize_numeric_for_update(
         self,
@@ -126,6 +156,56 @@ class PLCSyncService:
 
         return normalized
 
+    def _extract_valid_mo_id(self, plc_data: Dict[str, Any], plc_batch_no: int) -> Optional[str]:
+        """Validate NO-MO/MO_ID from PLC payload before any other checks."""
+        mo_id_raw = plc_data.get("mo_id") or None
+        mo_id = self._normalize_mo_id(mo_id_raw)
+        if not mo_id:
+            logger.warning(
+                "Skip batch=%s: invalid/no NO-MO from PLC READ payload (raw=%r)",
+                plc_batch_no,
+                mo_id_raw,
+            )
+            return None
+        return mo_id
+
+    def _resolve_batch_strict(
+        self,
+        session: Session,
+        plc_batch_no: int,
+        mo_id: str,
+    ) -> Optional[TableSmoBatch]:
+        """Resolve DB batch using strict identity: exact slot and MO ID."""
+        result = session.execute(
+            select(TableSmoBatch).where(
+                TableSmoBatch.batch_no == plc_batch_no,  # type: ignore[arg-type]
+                TableSmoBatch.mo_id == mo_id,
+            )
+        )
+        batch = result.scalar_one_or_none()
+        if batch is None:
+            logger.warning(
+                "Skip batch=%s: NO-MO=%s not matched in DB slot (strict match required)",
+                plc_batch_no,
+                mo_id,
+            )
+        return batch
+
+    def _is_completed_in_read_payload(self, plc_data: Dict[str, Any]) -> bool:
+        """Return True only when READ payload indicates status_manufacturing=1."""
+        status_payload = plc_data.get("status")
+        status_obj = status_payload if isinstance(status_payload, dict) else {}
+
+        raw_status = status_obj.get("manufacturing")
+        if raw_status is None:
+            raw_status = plc_data.get("status_manufacturing")
+
+        normalized = self._normalize_binary_status(
+            raw_status,
+            "status_manufacturing",
+        )
+        return bool(normalized) if normalized is not None else False
+
     async def sync_from_plc(self) -> Dict[str, Any]:
         """
         Read data from all PLC READ batches (01..10) and update mo_batch if values changed.
@@ -137,6 +217,7 @@ class PLCSyncService:
             processed_batches = 0
             updated_batches = 0
             guard_skipped_values = 0
+            skipped_invalid_mo_batches = 0
             failed_batches: List[Dict[str, Any]] = []
             mo_ids: List[str] = []
             first_mo_id: Optional[str] = None
@@ -154,10 +235,9 @@ class PLCSyncService:
                         )
                         continue
 
-                    mo_id_raw = plc_data.get("mo_id") or None
-                    mo_id = self._normalize_mo_id(mo_id_raw)
+                    mo_id = self._extract_valid_mo_id(plc_data, plc_batch_no)
                     if not mo_id:
-                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                        skipped_invalid_mo_batches += 1
                         continue
 
                     processed_batches += 1
@@ -165,41 +245,16 @@ class PLCSyncService:
                     if first_mo_id is None:
                         first_mo_id = mo_id
 
-                    # Prefer exact match by (batch_no, mo_id), fallback to mo_id only.
-                    result = session.execute(
-                        select(TableSmoBatch).where(
-                            TableSmoBatch.batch_no == plc_batch_no,  # type: ignore[arg-type]
-                            TableSmoBatch.mo_id == mo_id,
-                        )
-                    )
-                    batch = result.scalar_one_or_none()
-
-                    if not batch:
-                        result = session.execute(
-                            select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
-                        )
-                        batch = result.scalar_one_or_none()
-
-                    if not batch:
-                        # Fallback terakhir: gunakan slot/batch_no PLC.
-                        # Berguna saat MO_ID terbaca noisy tapi slot mapping masih valid.
-                        result = session.execute(
-                            select(TableSmoBatch).where(
-                                TableSmoBatch.batch_no == plc_batch_no  # type: ignore[arg-type]
-                            )
-                        )
-                        batch = result.scalar_one_or_none()
+                    batch = self._resolve_batch_strict(session, plc_batch_no, mo_id)
 
                     if not batch:
                         failed_batches.append(
                             {
                                 "batch_no": plc_batch_no,
                                 "mo_id": mo_id,
-                                "error": "MO batch not found in DB",
+                                "error": "MO batch not found in DB (strict batch_no+mo_id)",
                             }
                         )
-                        # Data was still read from PLC. Mark this slot as read to avoid reprocessing loop.
-                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
                         continue
 
                     updated, skipped_values = await self._update_batch_if_changed(session, batch, plc_data)
@@ -213,17 +268,23 @@ class PLCSyncService:
                             plc_batch_no,
                         )
 
-                    # Even if unchanged, slot has been processed.
-                    get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                    if self._is_completed_in_read_payload(plc_data):
+                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                    else:
+                        logger.debug(
+                            "Skip READ handshake mark for batch=%s (status_manufacturing!=1)",
+                            plc_batch_no,
+                        )
 
             if processed_batches == 0:
                 return {
-                    "success": False,
-                    "error": "No MO_ID found in PLC data across all batches",
-                    "mo_id": None,
+                    "success": True,
                     "updated": False,
+                    "message": "No valid NO-MO in PLC READ data (all batches skipped safely)",
+                    "mo_id": None,
                     "processed_batches": 0,
                     "updated_batches": 0,
+                    "skipped_invalid_mo_batches": skipped_invalid_mo_batches,
                     "guard_skipped_values": guard_skipped_values,
                     "failed_batches": failed_batches,
                     "mo_ids": [],
@@ -239,6 +300,7 @@ class PLCSyncService:
                 ),
                 "processed_batches": processed_batches,
                 "updated_batches": updated_batches,
+                "skipped_invalid_mo_batches": skipped_invalid_mo_batches,
                 "guard_skipped_values": guard_skipped_values,
                 "failed_batches": failed_batches,
                 "mo_ids": mo_ids,
@@ -342,6 +404,7 @@ class PLCSyncService:
             updated_batches = 0
             synced_batches = 0
             guard_skipped_values = 0
+            skipped_invalid_mo_batches = 0
             failed_batches: List[Dict[str, Any]] = []
             first_mo_id: Optional[str] = None
 
@@ -358,47 +421,25 @@ class PLCSyncService:
                         )
                         continue
 
-                    mo_id_raw = plc_data.get("mo_id")
-                    mo_id = self._normalize_mo_id(mo_id_raw) or ""
+                    mo_id = self._extract_valid_mo_id(plc_data, plc_batch_no) or ""
                     if not mo_id:
-                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                        skipped_invalid_mo_batches += 1
                         continue
 
                     processed_batches += 1
                     if first_mo_id is None:
                         first_mo_id = mo_id
 
-                    result = session.execute(
-                        select(TableSmoBatch).where(
-                            TableSmoBatch.batch_no == plc_batch_no,  # type: ignore[arg-type]
-                            TableSmoBatch.mo_id == mo_id,
-                        )
-                    )
-                    batch = result.scalar_one_or_none()
-                    if not batch:
-                        result = session.execute(
-                            select(TableSmoBatch).where(TableSmoBatch.mo_id == mo_id)
-                        )
-                        batch = result.scalar_one_or_none()
-
-                    if not batch:
-                        # Fallback terakhir: gunakan slot/batch_no PLC.
-                        result = session.execute(
-                            select(TableSmoBatch).where(
-                                TableSmoBatch.batch_no == plc_batch_no  # type: ignore[arg-type]
-                            )
-                        )
-                        batch = result.scalar_one_or_none()
+                    batch = self._resolve_batch_strict(session, plc_batch_no, mo_id)
 
                     if not batch:
                         failed_batches.append(
                             {
                                 "batch_no": plc_batch_no,
                                 "mo_id": mo_id,
-                                "error": "MO batch not found in DB",
+                                "error": "MO batch not found in DB (strict batch_no+mo_id)",
                             }
                         )
-                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
                         continue
 
                     updated, skipped_values = await self._update_batch_if_changed(session, batch, plc_data)
@@ -419,16 +460,23 @@ class PLCSyncService:
                             }
                         )
 
-                    get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                    if self._is_completed_in_read_payload(plc_data):
+                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
+                    else:
+                        logger.debug(
+                            "Skip READ handshake mark for batch=%s (status_manufacturing!=1)",
+                            plc_batch_no,
+                        )
 
             if processed_batches == 0:
                 return {
-                    "success": False,
-                    "error": "No MO_ID found in PLC data across all batches",
+                    "success": True,
+                    "message": "No valid NO-MO in PLC READ data (all batches skipped safely)",
                     "mo_id": None,
                     "processed_batches": 0,
                     "updated_batches": 0,
                     "synced_batches": 0,
+                    "skipped_invalid_mo_batches": skipped_invalid_mo_batches,
                     "guard_skipped_values": guard_skipped_values,
                     "failed_batches": failed_batches,
                 }
@@ -439,6 +487,7 @@ class PLCSyncService:
                 "processed_batches": processed_batches,
                 "updated_batches": updated_batches,
                 "synced_batches": synced_batches,
+                "skipped_invalid_mo_batches": skipped_invalid_mo_batches,
                 "guard_skipped_values": guard_skipped_values,
                 "failed_batches": failed_batches,
             }
@@ -468,6 +517,30 @@ class PLCSyncService:
         Returns:
             True if any field was updated, False otherwise
         """
+        # STRICT GATE: always validate NO-MO first before checking/updating other fields.
+        plc_batch_no = plc_data.get("batch_no")
+        if isinstance(plc_batch_no, (int, float)):
+            plc_batch_no = int(plc_batch_no)
+        else:
+            plc_batch_no = int(batch.batch_no)
+
+        incoming_mo_id = self._extract_valid_mo_id(plc_data, plc_batch_no)
+        db_mo_id = str(batch.mo_id) if batch.mo_id is not None else ""
+        if not incoming_mo_id:
+            logger.warning(
+                "Skip update batch=%s: NO-MO invalid before field checks",
+                plc_batch_no,
+            )
+            return (False, 0)
+        if incoming_mo_id != db_mo_id:
+            logger.warning(
+                "Skip update batch=%s: NO-MO mismatch PLC=%s DB=%s",
+                plc_batch_no,
+                incoming_mo_id,
+                db_mo_id,
+            )
+            return (False, 0)
+
         # Check if status_manufacturing is already 1 (True)
         # If manufacturing is COMPLETED, skip ALL updates
         # This prevents interfering with the completion workflow
@@ -482,6 +555,8 @@ class PLCSyncService:
 
         changed = False
         guard_skipped_values = 0
+        batch_no = int(batch.batch_no)
+        mo_id_for_log = db_mo_id or incoming_mo_id
 
         # Expected payload shape from PLCReadService.read_batch_data(batch_no):
         # - batch_no
@@ -560,6 +635,20 @@ class PLCSyncService:
                 )
 
         # Update actual weight quantity finished goods
+        planned_quantity = plc_data.get("quantity")
+        if planned_quantity is not None:
+            sanitized_planned = self._sanitize_numeric_for_update(
+                planned_quantity,
+                "quantity_goods",
+                maximum=self.MAX_REASONABLE_WEIGHT,
+            )
+            self._warn_if_suspicious_batch_weight(
+                sanitized_planned,
+                field_name="quantity_goods",
+                batch_no=batch_no,
+                mo_id=mo_id_for_log,
+            )
+
         new_quantity = plc_data.get("weight_finished_good")
         if new_quantity is None:
             # Backward compatibility with previous key naming
@@ -572,7 +661,14 @@ class PLCSyncService:
             )
             if sanitized_quantity is None:
                 guard_skipped_values += 1
-            elif batch.actual_weight_quantity_finished_goods != sanitized_quantity:
+            else:
+                self._warn_if_suspicious_batch_weight(
+                    sanitized_quantity,
+                    field_name="actual_weight_quantity_finished_goods",
+                    batch_no=batch_no,
+                    mo_id=mo_id_for_log,
+                )
+            if sanitized_quantity is not None and batch.actual_weight_quantity_finished_goods != sanitized_quantity:
                 batch.actual_weight_quantity_finished_goods = sanitized_quantity
                 changed = True
                 logger.debug(

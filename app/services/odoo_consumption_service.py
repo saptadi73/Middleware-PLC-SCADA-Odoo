@@ -833,6 +833,21 @@ class OdooConsumptionService:
                         quantity = float(quantity)
                     except (TypeError, ValueError):
                         quantity = None
+
+                if quantity is not None:
+                    expected_max = float(self.settings.expected_batch_max_kg)
+                    margin = float(self.settings.batch_weight_warn_margin_kg)
+                    warn_limit = expected_max + margin
+                    if quantity > warn_limit:
+                        logger.warning(
+                            "ATTENTION_SUSPICIOUS_VALUE | ODOO quantity | mo_id=%s | value=%.3f kg exceeds expected "
+                            "limit %.3f kg (max=%.3f, margin=%.3f)",
+                            mo_id,
+                            quantity,
+                            warn_limit,
+                            expected_max,
+                            margin,
+                        )
                 
                 update_result[
                     "consumption_details"

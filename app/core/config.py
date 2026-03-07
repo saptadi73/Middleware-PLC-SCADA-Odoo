@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     log_retention_days: int = Field(default=30, validation_alias="LOG_RETENTION_DAYS")
     log_cleanup_keep_last: int = Field(default=1000, validation_alias="LOG_CLEANUP_KEEP_LAST")
 
+    # Batch capacity sanity warning thresholds (kg)
+    expected_batch_max_kg: float = Field(default=1000.0, validation_alias="EXPECTED_BATCH_MAX_KG")
+    batch_weight_warn_margin_kg: float = Field(default=50.0, validation_alias="BATCH_WEIGHT_WARN_MARGIN_KG")
+
 
 @lru_cache
 def get_settings() -> Settings:

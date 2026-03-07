@@ -11,7 +11,10 @@ Flow:
 """
 
 import asyncio
+import argparse
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -32,6 +35,17 @@ def print_section(title: str) -> None:
     print(f"\n{'=' * 90}")
     print(f"  {title}")
     print(f"{'=' * 90}\n")
+
+
+def save_odoo_payload_snapshot(payload: dict, output_dir: Path) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    output_path = output_dir / f"task1_odoo_payload_{timestamp}.json"
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return output_path
 
 
 def show_queue() -> int:
@@ -135,7 +149,7 @@ def write_queue_to_plc_without_handshake_check(db: Session, limit: int) -> int:
     return written
 
 
-async def main() -> None:
+async def main(save_payload: bool, payload_dir: str) -> None:
     settings = get_settings()
 
     print("\n")
@@ -153,6 +167,10 @@ async def main() -> None:
     print_section("STEP 3: Fetch from Odoo + Stage DB + Write PLC (no pre-handshake)")
 
     payload = await fetch_mo_list_detailed(limit=settings.sync_batch_limit, offset=0)
+    if save_payload:
+        payload_path = save_odoo_payload_snapshot(payload, Path(payload_dir))
+        print(f"  [OK] Saved Odoo payload snapshot: {payload_path}")
+
     result = payload.get("result", {})
     mo_list = result.get("data", [])
     if not mo_list:
@@ -203,5 +221,29 @@ async def main() -> None:
         print("  [FAIL] FAILED - No batches in mo_batch")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Test Task 1 with PLC write (bypass pre-handshake check)"
+    )
+    parser.add_argument(
+        "--no-save-payload",
+        action="store_true",
+        help="Do not save raw Odoo payload snapshot",
+    )
+    parser.add_argument(
+        "--payload-dir",
+        type=str,
+        default="snapshots",
+        help="Directory to save Odoo payload snapshots",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(
+        main(
+            save_payload=not args.no_save_payload,
+            payload_dir=args.payload_dir,
+        )
+    )

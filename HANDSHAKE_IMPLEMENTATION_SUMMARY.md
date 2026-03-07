@@ -1,5 +1,13 @@
 ﻿# Handshake Implementation Summary - status_read_data
 
+> ⚠️ Historical note: This file contains implementation history. For current operational behavior, follow the policy below.
+
+## Current Policy (Active)
+
+- Middleware writes WRITE-area status defaults as `0` (`status_manufacturing`, `status_operation`, `status_read_data`).
+- PLC owns runtime changes for WRITE-area processing statuses.
+- Middleware sets READ `status_read_data=1` **only** when READ payload indicates completed batch (`status_manufacturing=1`).
+
 **Date:** February 21, 2026  
 **Feature:** PLC â†” Middleware Handshaking via status_read_data flags
 
@@ -18,7 +26,8 @@ Implemented bidirectional handshaking mechanism between Middleware and PLC to pr
 - **Status Flag:** **D6076/D6176/.../D6976** (status_read_data per-batch)
 - **Protocol:**
   - PLC writes production data â†’ per-batch READ payload (e.g. BATCH_READ_01: D6000-D6075)
-  - Middleware reads data â†’ sets status_read_data per-batch = 1
+  - Middleware reads data and evaluates completion (`status_manufacturing`)
+  - Middleware sets status_read_data per-batch = 1 only if `status_manufacturing=1`
   - PLC sees status_read_data per-batch=1 â†’ knows Middleware processed data
   - PLC resets status_read_data per-batch=0 when ready with next cycle
 
@@ -72,7 +81,7 @@ Implemented bidirectional handshaking mechanism between Middleware and PLC to pr
 ```python
 # READ Area (per-batch status_read_data)
 check_read_area_status() -> bool           # Check if Middleware has read
-mark_read_area_as_read() -> bool           # Set status_read_data per-batch = 1 after reading
+mark_read_area_as_read() -> bool           # Set status_read_data per-batch = 1 (call only for completed batch)
 reset_read_area_status() -> bool           # Set status_read_data per-batch = 0 (testing/PLC simulation)
 
 # WRITE Area (D7076)
@@ -107,8 +116,8 @@ handshake = get_handshake_service()
 **app/services/plc_sync_service.py:**
 - Added import: `from app.services.plc_handshake_service import get_handshake_service`
 - Updated `sync_from_plc()` method:
-  - **AFTER SUCCESSFUL SYNC:** Calls `mark_read_area_as_read()` (sets status_read_data per-batch=1)
-  - Marks data as read even if no changes detected (processed it anyway)
+  - **AFTER SUCCESSFUL SYNC:** Calls `mark_read_area_as_read()` only for completed READ batch (`status_manufacturing=1`)
+  - Does not mark READ handshake for in-progress batch data
 
 **app/services/plc_equipment_failure_service.py:**
 - Added import: `from app.services.plc_handshake_service import get_handshake_service`
@@ -273,12 +282,12 @@ from app.services.plc_sync_service import PLCSyncService
 
 service = PLCSyncService()
 
-# Sync automatically marks READ area as read
+# Sync marks READ area as read only for completed batch (status_manufacturing=1)
 result = await service.sync_from_plc()
 
 if result['success'] and result['updated']:
     print(f"âœ“ Synced MO {result['mo_id']}")
-    # status_read_data per-batch automatically set to 1
+  # status_read_data per-batch set to 1 only when completed
 ```
 
 ---
@@ -297,7 +306,7 @@ Before deployment, verify:
   - [ ] Run `python test_handshake.py` - all tests pass
   - [ ] Verify WRITE service rejects write when D7076=0
   - [ ] Verify WRITE service proceeds when D7076=1
-  - [ ] Verify SYNC service marks status_read_data per-batch=1 after read
+  - [ ] Verify SYNC service marks status_read_data per-batch=1 only when `status_manufacturing=1`
   - [ ] Verify Equipment Failure service marks D8022=1 after read
 
 - [ ] **Integration Tests:**

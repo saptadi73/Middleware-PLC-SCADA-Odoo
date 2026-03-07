@@ -1,5 +1,14 @@
 # ADDITIONAL EQUIPMENT - REAL Data Type Update
 
+> ⚠️ Historical note
+>
+> Dokumen ini adalah catatan perubahan lama (versi transisi) dan **bukan source of truth runtime saat ini**.
+> Untuk konfigurasi aktif terbaru, gunakan:
+> - `app/reference/ADDITIONAL_EQUIPMENT_REFERENCE.json`
+> - `app/services/plc_manual_weighing_service.py`
+>
+> Pada implementasi aktif, handshake manual weighing menggunakan `D9013`.
+
 **Date**: 2024  
 **Status**: ✅ COMPLETED  
 **Version**: 2.1

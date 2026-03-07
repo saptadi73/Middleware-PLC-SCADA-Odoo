@@ -1,5 +1,16 @@
 # Task 2 & Task 3 - Improved Odoo Sync Logic
 
+> ⚠️ Status dokumen: HISTORICAL
+>
+> Dokumen ini berisi desain transisi lama. Untuk perilaku runtime saat ini, gunakan implementasi di:
+> - `app/core/scheduler.py`
+> - `app/services/plc_sync_service.py`
+> - `app/services/odoo_consumption_service.py`
+>
+> Ringkasan perilaku aktual:
+> - Task 2: baca READ area PLC dan update `mo_batch` (tanpa sync Odoo rutin)
+> - Task 3: proses batch completed, sync ke Odoo, lalu archive jika sukses
+
 ## Problem yang Diperbaiki
 
 **Sebelumnya:**

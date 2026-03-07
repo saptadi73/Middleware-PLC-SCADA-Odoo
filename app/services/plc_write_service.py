@@ -526,17 +526,25 @@ class PLCWriteService:
                 logger.debug(f"Silo consumption field not found for {silo_number} in {resolved_batch_name}")
         
         # Write status fields (Note: field names must match MASTER_BATCH_REFERENCE exactly)
-        # Check mapping for actual field names
+        # Middleware policy for WRITE area defaults:
+        # - status_manufacturing = 0
+        # - status_operation = 0
+        # - status_read_data = 0
+        # PLC side will update these fields during process lifecycle.
         for item in self.mapping.get(resolved_batch_name, []):
             info = item.get("Informasi", "").lower()
             
             if "status" in info and "manufacturing" in info:
-                plc_data[item["Informasi"]] = mo_batch_data.get("status_manufacturing", False)
+                plc_data[item["Informasi"]] = False
                 logger.debug(f"Set status field: {item['Informasi']} = {plc_data[item['Informasi']]}")
             
             if "status" in info and "operation" in info:
-                plc_data[item["Informasi"]] = mo_batch_data.get("status_operation", False)
+                plc_data[item["Informasi"]] = False
                 logger.debug(f"Set operation field: {item['Informasi']} = {plc_data[item['Informasi']]}")
+
+            if "status" in info and "read" in info:
+                plc_data[item["Informasi"]] = False
+                logger.debug(f"Set read flag field: {item['Informasi']} = {plc_data[item['Informasi']]}")
             
             if "weight" in info and "finished" in info:
                 plc_data[item["Informasi"]] = mo_batch_data.get("actual_weight_quantity_finished_goods", 0)

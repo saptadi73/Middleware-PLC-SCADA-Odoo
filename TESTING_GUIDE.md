@@ -176,7 +176,7 @@ The middleware uses **status_read_data** flags for bidirectional handshaking:
 | FAILURE status | D8022 | MWâ†’PLC | Middleware marks equipment failure as read |
 
 **Flow:**
-- **READ**: PLC writes data â†’ MW reads â†’ MW sets status_read_data per-batch=1 â†’ PLC sees flag â†’ PLC resets to 0
+- **READ**: PLC writes data â†’ MW reads â†’ MW sets status_read_data per-batch=1 only if `status_manufacturing=1` â†’ PLC sees flag â†’ PLC resets to 0
 - **WRITE**: MW checks D7076 â†’ If 1: write batch, set to 0 â†’ PLC reads â†’ PLC sets to 1
 - **FAILURE**: PLC writes failure â†’ MW reads â†’ MW sets D8022=1 â†’ PLC resets to 0
 
@@ -216,6 +216,10 @@ The middleware uses **status_read_data** flags for bidirectional handshaking:
 3. **Boolean**: 
    - True â†’ PLC value `1`
    - False â†’ PLC value `0`
+
+4. **WRITE status ownership (current policy):**
+   - Middleware writes default `0` for WRITE status fields (`status_manufacturing`, `status_operation`, `status_read_data`).
+   - PLC changes WRITE statuses during process runtime.
 
 ---
 
@@ -555,7 +559,7 @@ Flow verified:
 **What it does:**
 1. **READ Area Test (per-batch status_read_data):**
    - Reset flag to 0 (PLC ready)
-   - Mark as read (set to 1)
+   - Mark as read (set to 1) only for completed batch (`status_manufacturing=1`)
    - Verify flag changed
    
 2. **WRITE Area Test (D7076)**:
