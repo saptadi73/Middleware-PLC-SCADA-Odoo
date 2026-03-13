@@ -6,10 +6,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import desc, text, select
 from sqlalchemy.orm import Session
 
-from app.core.scheduler import auto_sync_mo_task, plc_read_sync_task, process_completed_batches_task
+from app.core.scheduler import (
+    auto_sync_mo_task,
+    get_scheduler_status,
+    plc_read_sync_task,
+    process_completed_batches_task,
+    set_scheduler_enabled,
+)
 from app.db.session import get_db
 from app.models.system_log import SystemLog
 from app.models.tablesmo_batch import TableSmoBatch
@@ -22,6 +29,10 @@ from app.services.task1_reset_service import get_task1_reset_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class SchedulerToggleRequest(BaseModel):
+    enabled: bool
 
 TASK_MONITOR_CONFIG: dict[str, dict[str, str]] = {
     "task1": {
@@ -219,6 +230,54 @@ async def trigger_sync_manually() -> Any:
             "status": "error",
             "message": f"Manual sync failed: {str(exc)}",
         }
+
+
+@router.get("/admin/scheduler/status")
+async def get_scheduler_runtime_status() -> Any:
+    """
+    Status runtime scheduler untuk frontend switch/indicator.
+    """
+    try:
+        return {
+            "status": "success",
+            "data": get_scheduler_status(),
+        }
+    except Exception as exc:
+        logger.exception("Error getting scheduler runtime status: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get scheduler status: {str(exc)}",
+        ) from exc
+
+
+@router.post("/admin/scheduler/toggle")
+async def toggle_scheduler_runtime(payload: SchedulerToggleRequest) -> Any:
+    """
+    Start/stop scheduler secara runtime agar bisa dikontrol dari frontend.
+    """
+    try:
+        result = set_scheduler_enabled(payload.enabled)
+        logger.info(
+            "Scheduler runtime toggle requested: enabled=%s action=%s",
+            payload.enabled,
+            result.get("action"),
+        )
+
+        return {
+            "status": "success",
+            "message": (
+                "Scheduler started successfully"
+                if payload.enabled
+                else "Scheduler stopped successfully"
+            ),
+            "data": result,
+        }
+    except Exception as exc:
+        logger.exception("Error toggling scheduler runtime: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to toggle scheduler: {str(exc)}",
+        ) from exc
 
 
 @router.get("/admin/batch-status")

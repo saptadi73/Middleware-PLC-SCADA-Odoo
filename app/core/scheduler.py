@@ -10,7 +10,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List, cast
+from typing import Any, AsyncGenerator, List, cast
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import create_engine, desc, text, select
@@ -32,6 +32,7 @@ from app.models.tablesmo_batch import TableSmoBatch
 logger = logging.getLogger(__name__)
 
 scheduler: AsyncIOScheduler | None = None
+scheduler_runtime_override: bool = False
 
 
 async def get_equipment_failure_api_service(db: "Session") -> EquipmentFailureService:
@@ -819,135 +820,176 @@ async def system_log_cleanup_task():
         db.close()
 
 
-def start_scheduler():
-    """Start enhanced background scheduler dengan multiple tasks."""
-    global scheduler
-    
-    settings = get_settings()
-    
-    if not settings.enable_auto_sync:
-        logger.info("Scheduler is DISABLED in .env (ENABLE_AUTO_SYNC=false)")
-        return
-    
-    # Configure AsyncIOScheduler dengan optimized options
-    scheduler = AsyncIOScheduler(
+def _create_scheduler_instance() -> AsyncIOScheduler:
+    return AsyncIOScheduler(
         job_defaults={
-            'coalesce': True,           # Merge multiple missed trigger runs into one execution
-            'max_instances': 1,         # Prevent concurrent execution of same job
-            'misfire_grace_time': 30    # Grace period 30s sebelum log warning
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 30,
         }
     )
-    
-    # Task 1: Auto-sync MO dari Odoo (every 60 minutes by default)
-    if settings.enable_task_1_auto_sync:
-        scheduler.add_job(
-            auto_sync_mo_task,
-            trigger="interval",
-            minutes=settings.sync_interval_minutes,
-            id="auto_sync_mo",
-            replace_existing=True,
-        )
-        logger.info(
-            f"? Task 1: Auto-sync MO scheduler added "
-            f"(interval: {settings.sync_interval_minutes} minutes)"
-        )
-    else:
-        logger.warning(f"? Task 1: Auto-sync MO scheduler DISABLED (ENABLE_TASK_1_AUTO_SYNC=false)")
-    
-    # Task 2: PLC read sync (every 5 minutes for near real-time updates)
-    if settings.enable_task_2_plc_read:
-        scheduler.add_job(
-            plc_read_sync_task,
-            trigger="interval",
-            minutes=settings.plc_read_interval_minutes,
-            id="plc_read_sync",
-            replace_existing=True,
-        )
-        logger.info(
-            f"? Task 2: PLC read sync scheduler added "
-            f"(interval: {settings.plc_read_interval_minutes} minutes)"
-        )
-    else:
-        logger.warning(f"? Task 2: PLC read sync scheduler DISABLED (ENABLE_TASK_2_PLC_READ=false)")
-    
-    # Task 3: Process completed batches (every 3 minutes)
-    if settings.enable_task_3_process_completed:
-        scheduler.add_job(
-            process_completed_batches_task,
-            trigger="interval",
-            minutes=settings.process_completed_interval_minutes,
-            id="process_completed_batches",
-            replace_existing=True,
-        )
-        logger.info(
-            f"? Task 3: Process completed batches scheduler added "
-            f"(interval: {settings.process_completed_interval_minutes} minutes)"
-        )
-    else:
-        logger.warning(f"? Task 3: Process completed batches scheduler DISABLED (ENABLE_TASK_3_PROCESS_COMPLETED=false)")
-    
-    # Task 4: Monitor batch health (every 10 minutes)
-    if settings.enable_task_4_health_monitor:
-        scheduler.add_job(
-            monitor_batch_health_task,
-            trigger="interval",
-            minutes=settings.health_monitor_interval_minutes,
-            id="monitor_batch_health",
-            replace_existing=True,
-        )
-        logger.info(
-            f"? Task 4: Batch health monitoring scheduler added "
-            f"(interval: {settings.health_monitor_interval_minutes} minutes)"
-        )
-    else:
-        logger.warning(f"? Task 4: Batch health monitoring scheduler DISABLED (ENABLE_TASK_4_HEALTH_MONITOR=false)")
-    
-    # Task 5: Equipment failure monitoring (every 5 minutes by default)
-    if settings.enable_task_5_equipment_failure:
-        scheduler.add_job(
-            equipment_failure_monitoring_task,
-            trigger="interval",
-            minutes=settings.equipment_failure_interval_minutes,
-            id="equipment_failure_monitor",
-            replace_existing=True,
-        )
-        logger.info(
-            f"? Task 5: Equipment failure monitoring scheduler added "
-            f"(interval: {settings.equipment_failure_interval_minutes} minutes)"
-        )
-    else:
-        logger.warning(f"? Task 5: Equipment failure monitoring scheduler DISABLED (ENABLE_TASK_5_EQUIPMENT_FAILURE=false)")
 
-    # Task 6: System log cleanup (daily by default)
-    if settings.enable_task_6_log_cleanup:
-        scheduler.add_job(
-            system_log_cleanup_task,
-            trigger="interval",
-            minutes=settings.log_cleanup_interval_minutes,
-            id="system_log_cleanup",
-            replace_existing=True,
+
+def _get_scheduler_task_configs() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "auto_sync_mo",
+            "label": "Task 1",
+            "description": "Auto-sync MO dari Odoo ke mo_batch dan PLC WRITE area",
+            "enabled_attr": "enable_task_1_auto_sync",
+            "interval_attr": "sync_interval_minutes",
+            "func": auto_sync_mo_task,
+        },
+        {
+            "id": "plc_read_sync",
+            "label": "Task 2",
+            "description": "PLC read sync ke mo_batch",
+            "enabled_attr": "enable_task_2_plc_read",
+            "interval_attr": "plc_read_interval_minutes",
+            "func": plc_read_sync_task,
+        },
+        {
+            "id": "process_completed_batches",
+            "label": "Task 3",
+            "description": "Process completed batches ke Odoo dan history",
+            "enabled_attr": "enable_task_3_process_completed",
+            "interval_attr": "process_completed_interval_minutes",
+            "func": process_completed_batches_task,
+        },
+        {
+            "id": "monitor_batch_health",
+            "label": "Task 4",
+            "description": "Health monitoring scheduler",
+            "enabled_attr": "enable_task_4_health_monitor",
+            "interval_attr": "health_monitor_interval_minutes",
+            "func": monitor_batch_health_task,
+        },
+        {
+            "id": "equipment_failure_monitor",
+            "label": "Task 5",
+            "description": "Equipment failure monitoring scheduler",
+            "enabled_attr": "enable_task_5_equipment_failure",
+            "interval_attr": "equipment_failure_interval_minutes",
+            "func": equipment_failure_monitoring_task,
+        },
+        {
+            "id": "system_log_cleanup",
+            "label": "Task 6",
+            "description": "System log cleanup scheduler",
+            "enabled_attr": "enable_task_6_log_cleanup",
+            "interval_attr": "log_cleanup_interval_minutes",
+            "func": system_log_cleanup_task,
+        },
+    ]
+
+
+def _add_scheduler_jobs(current_scheduler: AsyncIOScheduler) -> int:
+    settings = get_settings()
+    task_count = 0
+
+    for task in _get_scheduler_task_configs():
+        enabled = bool(getattr(settings, task["enabled_attr"]))
+        interval_minutes = int(getattr(settings, task["interval_attr"]))
+
+        if enabled:
+            current_scheduler.add_job(
+                task["func"],
+                trigger="interval",
+                minutes=interval_minutes,
+                id=task["id"],
+                replace_existing=True,
+            )
+            logger.info(
+                "? %s: %s added (interval: %s minutes)",
+                task["label"],
+                task["description"],
+                interval_minutes,
+            )
+            task_count += 1
+        else:
+            logger.warning(
+                "? %s: %s DISABLED (%s=false)",
+                task["label"],
+                task["description"],
+                task["enabled_attr"].upper(),
+            )
+
+    return task_count
+
+
+def get_scheduler_status() -> dict[str, Any]:
+    settings = get_settings()
+    is_running = bool(scheduler and scheduler.running)
+    jobs_by_id = {
+        job.id: job
+        for job in (scheduler.get_jobs() if scheduler and scheduler.running else [])
+    }
+
+    tasks: list[dict[str, Any]] = []
+    for task in _get_scheduler_task_configs():
+        job = jobs_by_id.get(task["id"])
+        interval_minutes = int(getattr(settings, task["interval_attr"]))
+
+        tasks.append(
+            {
+                "id": task["id"],
+                "label": task["label"],
+                "description": task["description"],
+                "configured_enabled": bool(getattr(settings, task["enabled_attr"])),
+                "is_scheduled": job is not None,
+                "interval_minutes": interval_minutes,
+                "next_run_at": (
+                    job.next_run_time.isoformat()
+                    if job is not None and job.next_run_time is not None
+                    else None
+                ),
+            }
         )
-        logger.info(
-            f"? Task 6: System log cleanup scheduler added "
-            f"(interval: {settings.log_cleanup_interval_minutes} minutes, "
-            f"retention: {settings.log_retention_days} days, "
-            f"keep_last: {settings.log_cleanup_keep_last})"
-        )
-    else:
-        logger.warning("? Task 6: System log cleanup scheduler DISABLED (ENABLE_TASK_6_LOG_CLEANUP=false)")
+
+    return {
+        "is_running": is_running,
+        "runtime_override": scheduler_runtime_override,
+        "enabled_from_env": settings.enable_auto_sync,
+        "job_count": len(jobs_by_id),
+        "tasks": tasks,
+    }
+
+
+def set_scheduler_enabled(enabled: bool) -> dict[str, Any]:
+    if enabled:
+        started = start_scheduler(force=True)
+        status = get_scheduler_status()
+        status["action"] = "started" if started else "already-running"
+        return status
+
+    stopped = stop_scheduler()
+    status = get_scheduler_status()
+    status["action"] = "stopped" if stopped else "already-stopped"
+    return status
+
+
+def start_scheduler(force: bool = False) -> bool:
+    """Start enhanced background scheduler dengan multiple tasks."""
+    global scheduler
+    global scheduler_runtime_override
+    
+    settings = get_settings()
+
+    if scheduler and scheduler.running:
+        logger.info("Enhanced scheduler already running")
+        if force and not settings.enable_auto_sync:
+            scheduler_runtime_override = True
+        return False
+    
+    if not settings.enable_auto_sync and not force:
+        logger.info("Scheduler is DISABLED in .env (ENABLE_AUTO_SYNC=false)")
+        return False
+    
+    scheduler = _create_scheduler_instance()
+    task_count = _add_scheduler_jobs(scheduler)
+    scheduler_runtime_override = force and not settings.enable_auto_sync
     
     scheduler.start()
-    
-    # Count enabled tasks
-    enabled_tasks = [
-        settings.enable_task_1_auto_sync,
-        settings.enable_task_2_plc_read,
-        settings.enable_task_3_process_completed,
-        settings.enable_task_4_health_monitor,
-        settings.enable_task_5_equipment_failure,
-        settings.enable_task_6_log_cleanup,
-    ]
-    task_count = sum(enabled_tasks)
     
     logger.info(
         f"??? Enhanced Scheduler STARTED with {task_count}/6 tasks enabled ???\n"
@@ -958,15 +1000,23 @@ def start_scheduler():
         f"  - Task 5: Equipment failure ({settings.equipment_failure_interval_minutes} min) - {'?' if settings.enable_task_5_equipment_failure else '?'}\n"
         f"  - Task 6: Log cleanup ({settings.log_cleanup_interval_minutes} min) - {'?' if settings.enable_task_6_log_cleanup else '?'}"
     )
+    return True
 
 
-def stop_scheduler():
+def stop_scheduler() -> bool:
     """Stop enhanced background scheduler."""
     global scheduler
+    global scheduler_runtime_override
     
     if scheduler and scheduler.running:
         scheduler.shutdown()
+        scheduler = None
+        scheduler_runtime_override = False
         logger.info("? Enhanced scheduler stopped (all tasks terminated)")
+        return True
+
+    scheduler_runtime_override = False
+    return False
 
 
 @asynccontextmanager
