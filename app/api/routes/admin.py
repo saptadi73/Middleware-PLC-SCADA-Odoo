@@ -2,22 +2,173 @@
 Admin routes untuk manage scheduler, mo_batch table, dan monitoring
 """
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text, select
+from sqlalchemy import desc, text, select
 from sqlalchemy.orm import Session
 
 from app.core.scheduler import auto_sync_mo_task, plc_read_sync_task, process_completed_batches_task
 from app.db.session import get_db
-from app.services.mo_history_service import get_mo_history_service
+from app.models.system_log import SystemLog
 from app.models.tablesmo_batch import TableSmoBatch
+from app.services.mo_history_service import get_mo_history_service
 from app.services.odoo_consumption_service import get_consumption_service
-from app.services.plc_write_service import get_plc_write_service
 from app.services.plc_handshake_service import get_handshake_service
+from app.services.plc_write_service import get_plc_write_service
+from app.services.table_view_service import get_table_view_service
+from app.services.task1_reset_service import get_task1_reset_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+TASK_MONITOR_CONFIG: dict[str, dict[str, str]] = {
+    "task1": {
+        "label": "TASK 1",
+        "prefix": "[TASK 1]",
+        "description": "Auto-sync MO dari Odoo ke mo_batch dan PLC WRITE area",
+    },
+    "task2": {
+        "label": "TASK 2",
+        "prefix": "[TASK 2]",
+        "description": "PLC read sync ke mo_batch",
+    },
+    "task3": {
+        "label": "TASK 3",
+        "prefix": "[TASK 3]",
+        "description": "Process completed batches ke Odoo dan history",
+    },
+    "task4": {
+        "label": "TASK 4",
+        "prefix": "[TASK 4]",
+        "description": "Health monitoring scheduler",
+    },
+}
+
+
+def _resolve_task_monitor(task_name: str) -> dict[str, str]:
+    task_config = TASK_MONITOR_CONFIG.get(task_name.lower())
+    if task_config is None:
+        allowed_tasks = ", ".join(TASK_MONITOR_CONFIG.keys())
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown task monitor '{task_name}'. Use one of: {allowed_tasks}",
+        )
+    return task_config
+
+
+def _build_task_log_query(
+    db: Session,
+    task_prefix: str,
+    since_minutes: Optional[int],
+    level: Optional[str] = None,
+):
+    query = db.query(SystemLog).filter(SystemLog.message.ilike(f"%{task_prefix}%"))
+
+    if since_minutes is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
+        query = query.filter(SystemLog.timestamp >= cutoff)
+
+    if level:
+        query = query.filter(SystemLog.level == level.upper())
+
+    return query
+
+
+def _derive_task_health(latest_log: Optional[SystemLog]) -> str:
+    if latest_log is None:
+        return "no-data"
+
+    level = (latest_log.level or "").upper()
+    message = (latest_log.message or "").lower()
+
+    if level in {"ERROR", "CRITICAL"}:
+        return "error"
+    if level == "WARNING":
+        return "warning"
+    if "skip" in message or "wait" in message:
+        return "waiting"
+    if "start" in message or "run" in message or "trigger" in message:
+        return "running"
+    if any(keyword in message for keyword in ["complete", "success", "done", "finish"]):
+        return "success"
+    return "healthy"
+
+
+def _serialize_system_log(log: SystemLog) -> dict[str, Any]:
+    return {
+        "id": str(log.id),
+        "timestamp": log.timestamp.isoformat() if log.timestamp is not None else None,
+        "level": log.level,
+        "module": log.module,
+        "message": log.message,
+        "batch_no": log.batch_no,
+        "mo_id": log.mo_id,
+    }
+
+
+def _build_task_monitor_summary(
+    db: Session,
+    task_name: str,
+    since_minutes: Optional[int],
+) -> dict[str, Any]:
+    task_config = _resolve_task_monitor(task_name)
+    base_query = _build_task_log_query(db, task_config["prefix"], since_minutes)
+
+    total_logs = base_query.count()
+    latest_log = base_query.order_by(desc(SystemLog.timestamp)).first()
+    error_count = base_query.filter(SystemLog.level.in_(["ERROR", "CRITICAL"])).count()
+    warning_count = base_query.filter(SystemLog.level == "WARNING").count()
+    info_count = base_query.filter(SystemLog.level == "INFO").count()
+
+    return {
+        "task": task_name,
+        "label": task_config["label"],
+        "description": task_config["description"],
+        "status": _derive_task_health(latest_log),
+        "latest_level": latest_log.level if latest_log is not None else None,
+        "last_run_at": latest_log.timestamp.isoformat() if latest_log is not None else None,
+        "latest_message": latest_log.message if latest_log is not None else None,
+        "log_counts": {
+            "total": total_logs,
+            "info": info_count,
+            "warning": warning_count,
+            "error": error_count,
+        },
+    }
+
+
+@router.post("/admin/reset-task1-start")
+async def reset_task1_start(db: Session = Depends(get_db)) -> Any:
+    """
+    Prepare TASK 1 to run from the beginning.
+
+    Actions:
+    1. Set all WRITE-area status_read_data flags to 1
+    2. Clear all records from mo_batch
+    """
+    try:
+        service = get_task1_reset_service(db)
+        result = service.reset_for_fresh_start()
+
+        logger.info(
+            "TASK 1 reset start completed: ready=%s deleted=%s",
+            result["write_ready_count"],
+            result["deleted_mo_batch_count"],
+        )
+
+        return {
+            "status": "success",
+            "message": "TASK 1 initial state prepared successfully",
+            "data": result,
+        }
+    except Exception as exc:
+        logger.exception("Error preparing TASK 1 initial state: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to prepare TASK 1 initial state: {str(exc)}",
+        ) from exc
 
 
 @router.post("/admin/clear-mo-batch")
@@ -132,6 +283,53 @@ async def get_batch_status(db: Session = Depends(get_db)) -> Any:
         raise
 
 
+@router.get("/admin/table/mo-batch")
+async def get_mo_batch_table(db: Session = Depends(get_db)) -> Any:
+    """
+    Get data tabel mo_batch (queue aktif) untuk frontend table view.
+    """
+    try:
+        table_service = get_table_view_service(db)
+        data = table_service.get_mo_batch_table()
+
+        return {
+            "status": "success",
+            "data": data,
+        }
+    except Exception as exc:
+        logger.exception("Error getting mo_batch table: %s", str(exc))
+        raise
+
+
+@router.get("/admin/table/mo-histories")
+async def get_mo_histories_table(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    status: Optional[str] = Query(default=None),
+    mo_id: Optional[str] = Query(default=None),
+) -> Any:
+    """
+    Get data tabel mo_histories dengan pagination.
+    """
+    try:
+        table_service = get_table_view_service(db)
+        data = table_service.get_mo_histories_table(
+            limit=limit,
+            offset=offset,
+            status=status,
+            mo_id=mo_id,
+        )
+
+        return {
+            "status": "success",
+            "data": data,
+        }
+    except Exception as exc:
+        logger.exception("Error getting mo_histories table: %s", str(exc))
+        raise
+
+
 @router.get("/admin/monitor/real-time")
 async def get_realtime_monitoring(db: Session = Depends(get_db)) -> Any:
     """
@@ -196,6 +394,189 @@ async def get_realtime_monitoring(db: Session = Depends(get_db)) -> Any:
         }
     except Exception as exc:
         logger.exception("Error getting realtime monitoring: %s", str(exc))
+        raise
+
+
+@router.get("/admin/task-monitor/summary")
+async def get_task_monitor_summary(
+    db: Session = Depends(get_db),
+    since_minutes: Optional[int] = Query(default=180, ge=1, le=10080),
+) -> Any:
+    """
+    Ringkasan status monitoring per TASK berdasarkan system_log.
+    Cocok untuk kartu monitoring frontend.
+    """
+    try:
+        tasks = [
+            _build_task_monitor_summary(db, task_name, since_minutes)
+            for task_name in TASK_MONITOR_CONFIG
+        ]
+
+        return {
+            "status": "success",
+            "data": {
+                "since_minutes": since_minutes,
+                "tasks": tasks,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error getting task monitor summary: %s", str(exc))
+        raise
+
+
+@router.get("/admin/task-monitor/errors")
+async def get_task_monitor_errors(
+    db: Session = Depends(get_db),
+    since_minutes: Optional[int] = Query(default=180, ge=1, le=10080),
+    limit_per_task: int = Query(default=5, ge=1, le=50),
+    include_warning: bool = Query(default=True),
+) -> Any:
+    """
+    Agregasi alert TASK scheduler (ERROR/CRITICAL dan optional WARNING).
+    Cocok untuk panel alert frontend.
+    """
+    try:
+        levels = ["ERROR", "CRITICAL"]
+        if include_warning:
+            levels.append("WARNING")
+
+        alerts_by_task: dict[str, list[dict[str, Any]]] = {}
+        total_alerts = 0
+
+        for task_name, task_config in TASK_MONITOR_CONFIG.items():
+            alert_query = _build_task_log_query(
+                db=db,
+                task_prefix=task_config["prefix"],
+                since_minutes=since_minutes,
+            ).filter(SystemLog.level.in_(levels))
+
+            task_alerts = (
+                alert_query.order_by(desc(SystemLog.timestamp))
+                .limit(limit_per_task)
+                .all()
+            )
+
+            serialized = [_serialize_system_log(item) for item in task_alerts]
+            alerts_by_task[task_name] = serialized
+            total_alerts += len(serialized)
+
+        return {
+            "status": "success",
+            "data": {
+                "since_minutes": since_minutes,
+                "levels": levels,
+                "limit_per_task": limit_per_task,
+                "total_alerts": total_alerts,
+                "tasks": alerts_by_task,
+            },
+        }
+    except Exception as exc:
+        logger.exception("Error getting task monitor alerts: %s", str(exc))
+        raise
+
+
+@router.get("/admin/task-monitor/errors/flat")
+async def get_task_monitor_errors_flat(
+    db: Session = Depends(get_db),
+    since_minutes: Optional[int] = Query(default=180, ge=1, le=10080),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    include_warning: bool = Query(default=True),
+) -> Any:
+    """
+    Alert TASK scheduler dalam satu list gabungan terurut waktu terbaru.
+    Cocok untuk global feed/notification panel frontend.
+    """
+    try:
+        levels = ["ERROR", "CRITICAL"]
+        if include_warning:
+            levels.append("WARNING")
+
+        all_alerts: list[dict[str, Any]] = []
+
+        for task_name, task_config in TASK_MONITOR_CONFIG.items():
+            alert_query = _build_task_log_query(
+                db=db,
+                task_prefix=task_config["prefix"],
+                since_minutes=since_minutes,
+            ).filter(SystemLog.level.in_(levels))
+
+            for item in alert_query.all():
+                serialized = _serialize_system_log(item)
+                serialized["task"] = task_name
+                serialized["task_label"] = task_config["label"]
+                serialized["task_prefix"] = task_config["prefix"]
+                all_alerts.append(serialized)
+
+        all_alerts.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+        paged_alerts = all_alerts[skip : skip + limit]
+
+        return {
+            "status": "success",
+            "data": {
+                "since_minutes": since_minutes,
+                "levels": levels,
+                "total_alerts": len(all_alerts),
+                "skip": skip,
+                "limit": limit,
+                "items": paged_alerts,
+                "has_next": (skip + len(paged_alerts)) < len(all_alerts),
+            },
+        }
+    except Exception as exc:
+        logger.exception("Error getting flat task monitor alerts: %s", str(exc))
+        raise
+
+
+@router.get("/admin/task-monitor/{task_name}")
+async def get_task_monitor_detail(
+    task_name: str,
+    db: Session = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    skip: int = Query(default=0, ge=0),
+    since_minutes: Optional[int] = Query(default=180, ge=1, le=10080),
+    level: Optional[str] = Query(default=None),
+) -> Any:
+    """
+    Detail monitoring untuk satu TASK scheduler, termasuk recent log lines.
+    """
+    try:
+        task_config = _resolve_task_monitor(task_name)
+        log_query = _build_task_log_query(db, task_config["prefix"], since_minutes, level)
+        total = log_query.count()
+        items = (
+            log_query.order_by(desc(SystemLog.timestamp))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+        return {
+            "status": "success",
+            "data": {
+                "summary": _build_task_monitor_summary(db, task_name, since_minutes),
+                "filters": {
+                    "task": task_name.lower(),
+                    "label": task_config["label"],
+                    "prefix": task_config["prefix"],
+                    "since_minutes": since_minutes,
+                    "level": level.upper() if level else None,
+                    "skip": skip,
+                    "limit": limit,
+                },
+                "logs": [_serialize_system_log(item) for item in items],
+                "meta": {
+                    "total": total,
+                    "has_next": (skip + len(items)) < total,
+                },
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error getting task monitor detail for %s: %s", task_name, str(exc))
         raise
 
 

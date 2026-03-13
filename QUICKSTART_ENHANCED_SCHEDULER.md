@@ -36,6 +36,10 @@ Semua requirement dari konsep `konsep_SCADA_PLC_odoo.txt` telah diimplementasika
 |----------|---------|
 | `GET /api/admin/batch-status` | Current status semua batches |
 | `GET /api/admin/monitor/real-time` | Real-time dashboard |
+| `GET /api/admin/task-monitor/summary` | Ringkasan status TASK1-TASK4 |
+| `GET /api/admin/task-monitor/errors` | Alert agregat ERROR/WARNING per TASK |
+| `GET /api/admin/task-monitor/errors/flat` | Alert gabungan semua TASK (single list) |
+| `GET /api/admin/task-monitor/{task_name}` | Detail log per TASK scheduler |
 | `GET /api/admin/history` | View archived batches |
 | `GET /api/admin/history/{mo_id}` | History for specific MO |
 | `GET /api/admin/failed-to-push` | Batches failed to push Odoo |
@@ -49,6 +53,7 @@ Semua requirement dari konsep `konsep_SCADA_PLC_odoo.txt` telah diimplementasika
 | `POST /api/admin/manual/trigger-plc-sync` | Force PLC sync |
 | `POST /api/admin/manual/trigger-process-completed` | Force process completed |
 | `POST /api/admin/trigger-sync` | Force MO sync dari Odoo |
+| `POST /api/admin/reset-task1-start` | Reset handshake WRITE area + clear `mo_batch` agar TASK1 mulai dari awal |
 | `POST /api/admin/clear-mo-batch` | Clear all batches |
 
 ### 5. âœ… Data Protection
@@ -97,6 +102,18 @@ curl http://localhost:8000/api/admin/monitor/real-time
 # Batch status
 curl http://localhost:8000/api/admin/batch-status
 
+# Task summary monitoring
+curl http://localhost:8000/api/admin/task-monitor/summary
+
+# Task alerts monitoring
+curl "http://localhost:8000/api/admin/task-monitor/errors?since_minutes=180&limit_per_task=5"
+
+# Task flat alert feed
+curl "http://localhost:8000/api/admin/task-monitor/errors/flat?since_minutes=180&skip=0&limit=100"
+
+# Task 2 recent log detail
+curl "http://localhost:8000/api/admin/task-monitor/task2?limit=20&since_minutes=180"
+
 # History
 curl http://localhost:8000/api/admin/history?limit=10
 ```
@@ -106,6 +123,9 @@ curl http://localhost:8000/api/admin/history?limit=10
 ```bash
 # Force sync from Odoo
 curl -X POST http://localhost:8000/api/admin/trigger-sync
+
+# Reset TASK1 from fresh start state
+curl -X POST http://localhost:8000/api/admin/reset-task1-start
 
 # Force PLC read
 curl -X POST http://localhost:8000/api/admin/manual/trigger-plc-sync
@@ -118,6 +138,114 @@ curl http://localhost:8000/api/admin/failed-to-push
 
 # Retry push to Odoo
 curl -X POST http://localhost:8000/api/admin/manual/retry-push-odoo/WH/MO/00001
+```
+
+### 4. Frontend Integration for TASK1 Reset
+
+Gunakan endpoint ini bila operator menekan tombol `Mulai dari Awal` di frontend.
+
+**Flow yang disarankan**:
+1. Panggil `POST /api/admin/reset-task1-start`
+2. Jika ingin langsung eksekusi tanpa menunggu scheduler, lanjutkan ke `POST /api/admin/trigger-sync`
+3. Refresh `GET /api/admin/batch-status` untuk menampilkan queue terbaru
+
+**Contoh fetch:**
+
+```javascript
+async function startTask1FromBeginning() {
+   const resetRes = await fetch('/api/admin/reset-task1-start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+   });
+   const resetData = await resetRes.json();
+
+   if (!resetRes.ok || resetData.status !== 'success') {
+      throw new Error(resetData.detail || resetData.message || 'Reset TASK1 failed');
+   }
+
+   const syncRes = await fetch('/api/admin/trigger-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+   });
+   const syncData = await syncRes.json();
+
+   if (!syncRes.ok || syncData.status !== 'success') {
+      throw new Error(syncData.detail || syncData.message || 'Trigger sync failed');
+   }
+
+   return {
+      reset: resetData,
+      sync: syncData,
+   };
+}
+```
+
+**Contoh axios:**
+
+```javascript
+import axios from 'axios';
+
+export async function startTask1FromBeginning() {
+   const reset = await axios.post('/api/admin/reset-task1-start');
+   const sync = await axios.post('/api/admin/trigger-sync');
+
+   return {
+      reset: reset.data,
+      sync: sync.data,
+   };
+}
+```
+
+### 5. Frontend Integration for TASK Monitoring
+
+Gunakan endpoint ini bila frontend ingin menampilkan status TASK demi TASK seperti terminal scheduler.
+
+**Flow yang disarankan**:
+1. Panggil `GET /api/admin/task-monitor/summary?since_minutes=180` untuk kartu status TASK1-TASK4
+2. Panggil `GET /api/admin/task-monitor/errors?since_minutes=180&limit_per_task=5` untuk panel alert global
+3. Panggil `GET /api/admin/task-monitor/errors/flat?since_minutes=180&skip=0&limit=100` untuk feed notifikasi gabungan
+4. Saat user klik salah satu kartu, panggil `GET /api/admin/task-monitor/task1?limit=50&since_minutes=180`
+5. Untuk tab khusus error, ulangi request detail dengan `&level=ERROR`
+
+**Contoh fetch:**
+
+```javascript
+export async function loadSchedulerTaskMonitor(taskName = 'task1') {
+   const summaryRes = await fetch('/api/admin/task-monitor/summary?since_minutes=180');
+   const summaryData = await summaryRes.json();
+
+   if (!summaryRes.ok || summaryData.status !== 'success') {
+      throw new Error(summaryData.detail || summaryData.message || 'Task summary failed');
+   }
+
+   const alertRes = await fetch('/api/admin/task-monitor/errors?since_minutes=180&limit_per_task=5');
+   const alertData = await alertRes.json();
+
+   if (!alertRes.ok || alertData.status !== 'success') {
+      throw new Error(alertData.detail || alertData.message || 'Task alert failed');
+   }
+
+   const alertFeedRes = await fetch('/api/admin/task-monitor/errors/flat?since_minutes=180&skip=0&limit=100');
+   const alertFeedData = await alertFeedRes.json();
+
+   if (!alertFeedRes.ok || alertFeedData.status !== 'success') {
+      throw new Error(alertFeedData.detail || alertFeedData.message || 'Task alert feed failed');
+   }
+
+   const detailRes = await fetch(`/api/admin/task-monitor/${taskName}?limit=50&since_minutes=180`);
+   const detailData = await detailRes.json();
+
+   if (!detailRes.ok || detailData.status !== 'success') {
+      throw new Error(detailData.detail || detailData.message || 'Task detail failed');
+   }
+
+   return {
+      summary: summaryData.data,
+      alerts: alertData.data,
+      alertFeed: alertFeedData.data,
+      detail: detailData.data,
+   };
+}
 ```
 
 ---

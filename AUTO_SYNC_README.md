@@ -151,7 +151,68 @@ GET /api/admin/batch-status
 }
 ```
 
-### 2. Clear mo_batch Table
+### 2. Prepare TASK1 Fresh Start
+
+```http
+POST /api/admin/reset-task1-start
+```
+
+**Use Case**: Dipakai saat sistem benar-benar ingin mulai dari awal dan PLC WRITE area masih menahan handshake `status_read_data=0` di `D7076`, `D7176`, `D7276`, dan seterusnya.
+
+**Behavior**:
+- Set semua flag WRITE `status_read_data` menjadi `1` berdasarkan mapping di `MASTER_BATCH_REFERENCE.json`
+- Hapus semua data di table `mo_batch`
+- Setelah itu TASK1 bisa menulis batch baru lagi
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "TASK 1 initial state prepared successfully",
+  "data": {
+    "write_ready_addresses": [
+      "D7076",
+      "D7176",
+      "D7276",
+      "D7376"
+    ],
+    "write_ready_count": 10,
+    "deleted_mo_batch_count": 7
+  }
+}
+```
+
+**Frontend Example (fetch):**
+```javascript
+async function resetTask1Start() {
+  const response = await fetch('/api/admin/reset-task1-start', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const result = await response.json();
+
+  if (!response.ok || result.status !== 'success') {
+    throw new Error(result.detail || result.message || 'Failed to reset TASK1');
+  }
+
+  return result;
+}
+```
+
+**Frontend Example (axios):**
+```javascript
+import axios from 'axios';
+
+async function resetTask1Start() {
+  const { data } = await axios.post('/api/admin/reset-task1-start');
+  return data;
+}
+```
+
+### 3. Clear mo_batch Table
 
 ```http
 POST /api/admin/clear-mo-batch
@@ -168,7 +229,7 @@ POST /api/admin/clear-mo-batch
 }
 ```
 
-### 3. Manual Trigger Sync
+### 4. Manual Trigger Sync
 
 ```http
 POST /api/admin/trigger-sync
@@ -184,6 +245,109 @@ POST /api/admin/trigger-sync
 }
 ```
 
+### 5. Monitor TASK Scheduler per Task
+
+```http
+GET /api/admin/task-monitor/summary
+GET /api/admin/task-monitor/errors
+GET /api/admin/task-monitor/errors/flat
+GET /api/admin/task-monitor/{task_name}
+```
+
+**Use Case**: Dipakai frontend untuk menampilkan monitoring TASK demi TASK seperti yang terlihat di terminal scheduler.
+
+**Task name yang valid**:
+- `task1`
+- `task2`
+- `task3`
+- `task4`
+
+**Query parameters**:
+- `since_minutes=180` untuk jendela log terbaru
+- `limit=50` dan `skip=0` untuk pagination detail
+- `level=ERROR` bila frontend ingin menampilkan error saja
+- `limit_per_task=5` dan `include_warning=true` untuk endpoint alert agregat
+- `skip=0` dan `limit=100` untuk endpoint alert flat agar bisa pagination/infinite scroll
+
+**Summary Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "since_minutes": 180,
+    "tasks": [
+      {
+        "task": "task1",
+        "label": "TASK 1",
+        "status": "success",
+        "latest_level": "INFO",
+        "last_run_at": "2026-03-13T08:21:10.123456+00:00",
+        "latest_message": "[TASK 1] Auto-sync committed successfully: staged=4, written=4"
+      }
+    ]
+  }
+}
+```
+
+**Detail Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "summary": {
+      "task": "task2",
+      "label": "TASK 2",
+      "status": "running"
+    },
+    "logs": [
+      {
+        "timestamp": "2026-03-13T08:25:10.123456+00:00",
+        "level": "INFO",
+        "module": "app.core.scheduler",
+        "message": "[TASK 2] Updated 3 batch(es) from PLC (processed=3, failed=0)"
+      }
+    ],
+    "meta": {
+      "total": 25,
+      "has_next": false
+    }
+  }
+}
+```
+
+**Alert Aggregate Response (`/errors`):**
+```json
+{
+  "status": "success",
+  "data": {
+    "since_minutes": 180,
+    "levels": ["ERROR", "CRITICAL", "WARNING"],
+    "limit_per_task": 5,
+    "total_alerts": 2,
+    "tasks": {
+      "task1": [{ "level": "ERROR", "message": "[TASK 1] ERROR ..." }],
+      "task2": [],
+      "task3": [{ "level": "WARNING", "message": "[TASK 3] ..." }],
+      "task4": []
+    }
+  }
+}
+```
+
+**Frontend Example (fetch):**
+```javascript
+async function loadTaskMonitor(taskName) {
+  const response = await fetch(`/api/admin/task-monitor/${taskName}?limit=50&since_minutes=180`);
+  const result = await response.json();
+
+  if (!response.ok || result.status !== 'success') {
+    throw new Error(result.detail || result.message || 'Failed to load task monitor');
+  }
+
+  return result.data;
+}
+```
+
 ## Testing Scenarios
 
 ### Scenario 1: Normal Operation
@@ -192,14 +356,36 @@ POST /api/admin/trigger-sync
 # 1. Check current status
 curl http://localhost:8000/api/admin/batch-status
 
-# 2. Clear table (simulate PLC done)
-curl -X POST http://localhost:8000/api/admin/clear-mo-batch
+# 2. Reset TASK1 from clean state
+curl -X POST http://localhost:8000/api/admin/reset-task1-start
 
 # 3. Trigger manual sync (or wait 5 minutes)
 curl -X POST http://localhost:8000/api/admin/trigger-sync
 
+# 4. Check TASK summary like scheduler terminal
+curl http://localhost:8000/api/admin/task-monitor/summary
+
+# 5. Inspect TASK 2 recent logs
+curl "http://localhost:8000/api/admin/task-monitor/task2?limit=20&since_minutes=180"
+
+# 6. Get aggregated task alerts
+curl "http://localhost:8000/api/admin/task-monitor/errors?since_minutes=180&limit_per_task=5&include_warning=true"
+
+# 7. Get flat alert feed
+curl "http://localhost:8000/api/admin/task-monitor/errors/flat?since_minutes=180&skip=0&limit=100&include_warning=true"
+
 # 4. Verify data inserted
 curl http://localhost:8000/api/admin/batch-status
+```
+
+### Scenario 1B: Frontend Flow
+
+```javascript
+async function startTask1FromBeginning() {
+  await fetch('/api/admin/reset-task1-start', { method: 'POST' });
+  await fetch('/api/admin/trigger-sync', { method: 'POST' });
+  return fetch('/api/admin/batch-status');
+}
 ```
 
 ### Scenario 2: Test Scheduler Skip Logic

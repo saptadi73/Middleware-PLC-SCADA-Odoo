@@ -478,6 +478,30 @@ class PLCHandshakeService:
         except Exception as exc:
             logger.error(f"Error resetting manual weighing status: {exc}", exc_info=True)
             return False
+
+    def mark_all_write_areas_as_ready(self) -> list[int]:
+        """
+        Mark all mapped WRITE-area status_read_data flags as ready (set to 1).
+
+        This is used when the system must be restarted from a clean state and
+        TASK 1 needs the PLC WRITE area handshake to allow a fresh write cycle.
+
+        Returns:
+            List of DM addresses that were updated to 1.
+        """
+        addresses = sorted(
+            {self.WRITE_AREA_STATUS_ADDRESS, *self._write_status_by_batch.values()}
+        )
+
+        for address in addresses:
+            self._write_status_flag(address, 1)
+
+        logger.info(
+            "Marked WRITE area handshake as ready on %s address(es): %s",
+            len(addresses),
+            ", ".join(f"D{address}" for address in addresses),
+        )
+        return addresses
     
     def reset_write_area_status(self) -> bool:
         """
