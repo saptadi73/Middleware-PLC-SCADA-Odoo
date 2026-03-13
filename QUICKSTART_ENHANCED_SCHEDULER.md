@@ -40,6 +40,8 @@ Semua requirement dari konsep `konsep_SCADA_PLC_odoo.txt` telah diimplementasika
 | `GET /api/admin/task-monitor/errors` | Alert agregat ERROR/WARNING per TASK |
 | `GET /api/admin/task-monitor/errors/flat` | Alert gabungan semua TASK (single list) |
 | `GET /api/admin/task-monitor/{task_name}` | Detail log per TASK scheduler |
+| `GET /api/admin/table/mo-batch` | Data tabel `mo_batch` (active queue) |
+| `GET /api/admin/table/mo-histories` | Data tabel `mo_histories` dengan pagination + filter |
 | `GET /api/admin/history` | View archived batches |
 | `GET /api/admin/history/{mo_id}` | History for specific MO |
 | `GET /api/admin/failed-to-push` | Batches failed to push Odoo |
@@ -113,6 +115,15 @@ curl "http://localhost:8000/api/admin/task-monitor/errors/flat?since_minutes=180
 
 # Task 2 recent log detail
 curl "http://localhost:8000/api/admin/task-monitor/task2?limit=20&since_minutes=180"
+
+# Table mo_batch (active)
+curl http://localhost:8000/api/admin/table/mo-batch
+
+# Table mo_histories (pagination)
+curl "http://localhost:8000/api/admin/table/mo-histories?limit=20&offset=0"
+
+# Table mo_histories (filter status + mo_id partial)
+curl "http://localhost:8000/api/admin/table/mo-histories?limit=50&offset=0&status=completed&mo_id=WH/MO/00"
 
 # History
 curl http://localhost:8000/api/admin/history?limit=10
@@ -195,6 +206,51 @@ export async function startTask1FromBeginning() {
    };
 }
 ```
+
+### 6. Frontend Integration for Table `mo_batch` & `mo_histories`
+
+Gunakan endpoint tabel ini untuk halaman daftar active queue dan riwayat produksi yang besar.
+
+**Flow yang disarankan**:
+1. Panggil `GET /api/admin/table/mo-batch` untuk kartu/tabel batch aktif
+2. Panggil `GET /api/admin/table/mo-histories?limit=50&offset=0` untuk daftar riwayat
+3. Saat user melakukan pencarian MO, tambahkan query `mo_id` (partial match)
+4. Saat user pindah tab status, tambahkan query `status` (`completed`, `failed`, dst)
+
+**Contoh fetch:**
+
+```javascript
+export async function loadTableData({ offset = 0, limit = 50, status, moId }) {
+   const activeRes = await fetch('/api/admin/table/mo-batch');
+   const activeData = await activeRes.json();
+
+   if (!activeRes.ok || activeData.status !== 'success') {
+      throw new Error(activeData.detail || activeData.message || 'Load mo_batch failed');
+   }
+
+   const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+   });
+
+   if (status) params.set('status', status);
+   if (moId) params.set('mo_id', moId);
+
+   const historyRes = await fetch(`/api/admin/table/mo-histories?${params.toString()}`);
+   const historyData = await historyRes.json();
+
+   if (!historyRes.ok || historyData.status !== 'success') {
+      throw new Error(historyData.detail || historyData.message || 'Load mo_histories failed');
+   }
+
+   return {
+      active: activeData.data,
+      history: historyData.data,
+   };
+}
+```
+
+Catatan: ringkasan endpoint frontend terbaru tersedia di `FRONTEND_API_REFERENCE.md`.
 
 ### 5. Frontend Integration for TASK Monitoring
 

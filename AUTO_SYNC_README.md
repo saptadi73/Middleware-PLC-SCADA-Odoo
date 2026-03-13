@@ -348,6 +348,42 @@ async function loadTaskMonitor(taskName) {
 }
 ```
 
+### 6. View Table `mo_batch` & `mo_histories` (Pagination)
+
+```http
+GET /api/admin/table/mo-batch
+GET /api/admin/table/mo-histories
+```
+
+**Use Case**: Dipakai frontend untuk halaman tabel active batch (`mo_batch`) dan riwayat besar (`mo_histories`) dengan pagination/filter.
+
+**Query parameters `mo_histories`**:
+- `limit` (default: 50)
+- `offset` (default: 0)
+- `status` (opsional)
+- `mo_id` (opsional, partial match)
+
+**Contoh**:
+- `/api/admin/table/mo-histories?limit=50&offset=0`
+- `/api/admin/table/mo-histories?limit=50&offset=0&status=completed`
+- `/api/admin/table/mo-histories?limit=50&offset=0&status=completed&mo_id=WH/MO/00`
+
+**Response ringkas**:
+```json
+{
+  "status": "success",
+  "data": {
+    "rows": [],
+    "pagination": {
+      "limit": 50,
+      "offset": 0,
+      "total": 1200,
+      "has_next": true
+    }
+  }
+}
+```
+
 ## Testing Scenarios
 
 ### Scenario 1: Normal Operation
@@ -373,6 +409,12 @@ curl "http://localhost:8000/api/admin/task-monitor/errors?since_minutes=180&limi
 
 # 7. Get flat alert feed
 curl "http://localhost:8000/api/admin/task-monitor/errors/flat?since_minutes=180&skip=0&limit=100&include_warning=true"
+
+# 8. View mo_batch table
+curl http://localhost:8000/api/admin/table/mo-batch
+
+# 9. View mo_histories table with filter
+curl "http://localhost:8000/api/admin/table/mo-histories?limit=50&offset=0&status=completed&mo_id=WH/MO/00"
 
 # 4. Verify data inserted
 curl http://localhost:8000/api/admin/batch-status

@@ -45,6 +45,11 @@ Mau memahami implementation details? Baca ini:
    - All available options
    - Preset examples
 
+4. **FRONTEND_API_REFERENCE.md** - 10 min read
+   - Katalog endpoint middleware untuk frontend
+   - Monitoring TASK, reset TASK1, tabel `mo_batch`/`mo_histories`
+   - Query pagination/filter (`limit`, `offset`, `status`, `mo_id`)
+
 ### 🧪 For QA/Testing (5 minutes)
 Mau verify semua working? Quick test:
 
@@ -71,6 +76,7 @@ Lihat: **test_scheduler_config.py** source code
 |------|---------|----------|-----------|
 | **SCHEDULER_TASK_CONTROL_SUMMARY.md** | Implementation summary with examples | Managers/Engineers | 5-7 min |
 | **SCHEDULER_IMPLEMENTATION_COMPLETE.md** | Complete status & architecture | Project Leads | 10-12 min |
+| **FRONTEND_API_REFERENCE.md** | Referensi endpoint middleware untuk frontend | Frontend/Backend Engineers | 8-10 min |
 
 ### Level 3: Deep Dive/Complete Reference (30 min)
 
