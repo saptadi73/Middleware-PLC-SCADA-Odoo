@@ -34,6 +34,20 @@ class PLCManualWeighingService:
         self.settings = get_settings()
         self.mapping: List[Dict[str, Any]] = []
         self.mapping_structure: Dict[str, Any] = {}
+        self._field_by_info: Dict[str, Dict[str, Any]] = {}
+        self._manual_start_addr = 9000
+        self._manual_word_count = 14
+        self._batch_slice = (0, 1)
+        self._mo_slice = (1, 9)
+        self._product_slice = (9, 11)
+        self._consumption_slice = (11, 13)
+        self._handshake_index = 13
+        self._batch_type = "INT"
+        self._batch_scale = 1
+        self._product_type = "REAL"
+        self._product_scale = 1
+        self._consumption_type = "REAL"
+        self._consumption_scale = 100
         self._load_reference()
         self.base_url = self.settings.odoo_base_url
         self.handshake_service = get_handshake_service()
@@ -51,10 +65,78 @@ class PLCManualWeighingService:
                 data = json.load(f)
                 self.mapping = data.get("ADDITIONAL", [])
                 self.mapping_structure = data.get("mapping_structure", {})
+
+            self._field_by_info = {
+                str(item.get("Informasi") or "").strip().lower(): item
+                for item in self.mapping
+            }
+            self._configure_manual_layout_from_reference()
             
             logger.info(f"Loaded PLC manual weighing mapping: {len(self.mapping)} fields")
         except Exception as e:
             logger.error(f"Error loading additional equipment reference: {e}")
+
+    def _get_field(self, info_name: str) -> Optional[Dict[str, Any]]:
+        return self._field_by_info.get(info_name.strip().lower())
+
+    def _configure_manual_layout_from_reference(self) -> None:
+        """Build manual weighing memory layout dynamically from reference file."""
+        batch_field = self._get_field("BATCH")
+        mo_field = self._get_field("NO-MO")
+        product_field = self._get_field("NO-Product")
+        consumption_field = self._get_field("Consumption")
+        handshake_field = self._get_field("status_manual_weigh_read")
+
+        required_fields = [batch_field, mo_field, product_field, consumption_field, handshake_field]
+        if not all(required_fields):
+            logger.warning(
+                "Manual weighing reference incomplete; using fallback hardcoded layout"
+            )
+            return
+
+        try:
+            parsed: Dict[str, Tuple[int, int]] = {}
+            parsed["batch"] = self._parse_dm_address(str(batch_field.get("DM") or ""))
+            parsed["mo"] = self._parse_dm_address(str(mo_field.get("DM") or ""))
+            parsed["product"] = self._parse_dm_address(str(product_field.get("DM") or ""))
+            parsed["consumption"] = self._parse_dm_address(str(consumption_field.get("DM") or ""))
+            parsed["handshake"] = self._parse_dm_address(str(handshake_field.get("DM") or ""))
+
+            min_addr = min(start for start, _ in parsed.values())
+            max_addr = max((start + count - 1) for start, count in parsed.values())
+
+            def _slice_for(name: str) -> Tuple[int, int]:
+                start, count = parsed[name]
+                offset = start - min_addr
+                return (offset, offset + count)
+
+            self._manual_start_addr = min_addr
+            self._manual_word_count = (max_addr - min_addr) + 1
+            self._batch_slice = _slice_for("batch")
+            self._mo_slice = _slice_for("mo")
+            self._product_slice = _slice_for("product")
+            self._consumption_slice = _slice_for("consumption")
+            self._handshake_index = _slice_for("handshake")[0]
+
+            self._batch_type = str(batch_field.get("Data Type") or "INT")
+            self._batch_scale = int(batch_field.get("scale") or 1)
+            self._product_type = str(product_field.get("Data Type") or "INT")
+            self._product_scale = int(product_field.get("scale") or 1)
+            self._consumption_type = str(consumption_field.get("Data Type") or "REAL")
+            self._consumption_scale = int(consumption_field.get("scale") or 100)
+
+            logger.info(
+                "Manual weighing layout loaded from reference: D%s-D%s (handshake index=%s, addr=D%s)",
+                self._manual_start_addr,
+                self._manual_start_addr + self._manual_word_count - 1,
+                self._handshake_index,
+                self._manual_start_addr + self._handshake_index,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed parsing manual weighing layout from reference; using fallback layout: %s",
+                exc,
+            )
     
     def _parse_dm_address(self, dm_str: str) -> Tuple[int, int]:
         """
@@ -172,12 +254,13 @@ class PLCManualWeighingService:
     
     def read_manual_weighing_data(self) -> Optional[Dict[str, Any]]:
         """
-        Read manual weighing data dari PLC memory area D9000-D9010.
+        Read manual weighing data dari PLC memory area (dynamic from reference).
         
         Returns dict dengan structure:
         {
             "batch": int,
             "mo_id": str,
+            "product_id": int,
             "product_tmpl_id": int,
             "consumption": float,
             "handshake_flag": int (0 or 1),
@@ -187,9 +270,9 @@ class PLCManualWeighingService:
         Returns None jika read gagal atau tidak ada data baru.
         """
         try:
-            # Read memory area D9000-D9013 (14 words total)
-            start_addr = 9000
-            word_count = 14  # D9000-D9013
+            # Read memory area from reference layout
+            start_addr = self._manual_start_addr
+            word_count = self._manual_word_count
             
             with FinsUdpClient(
                 ip=self.settings.plc_ip,
@@ -213,26 +296,35 @@ class PLCManualWeighingService:
                 
                 data_words = parse_memory_read_response(response.raw, word_count)
             
-            # Check handshake flag first (D9013 = index 13)
-            handshake_flag = data_words[13]
+            # Check handshake flag first (dynamic index from reference)
+            handshake_flag = data_words[self._handshake_index]
             if handshake_flag != 0:
-                logger.debug("D9013 handshake flag = 1 (already read), skipping")
+                logger.debug(
+                    "D%s handshake flag = 1 (already read), skipping",
+                    start_addr + self._handshake_index,
+                )
                 return None  # Data sudah dibaca, tidak ada data baru
             
-            # Parse fields with CORRECT mapping:
-            # D9000: BATCH (INT, 1 word) - index 0
-            # D9001-D9008: NO-MO (ASCII, 8 words = 16 chars) - index 1-8
-            # D9009-D9010: NO-Product (REAL, 2 words) - index 9-10
-            # D9011-D9012: Consumption (REAL, 2 words, scale=100) - index 11-12
-            # D9013: status_manual_weigh_read (BOOLEAN, 1 word) - index 13
-            
-            batch = self._convert_from_words(data_words[0:1], "INT", scale=1)
-            mo_words = data_words[1:9]  # D9001-D9008 (8 words = 16 chars)
+            # Parse fields using dynamic layout from reference
+            batch_words = data_words[self._batch_slice[0]:self._batch_slice[1]]
+            mo_words = data_words[self._mo_slice[0]:self._mo_slice[1]]
+            product_words = data_words[self._product_slice[0]:self._product_slice[1]]
+            consumption_words = data_words[self._consumption_slice[0]:self._consumption_slice[1]]
+
+            batch = self._convert_from_words(batch_words, self._batch_type, scale=self._batch_scale)
             mo_id_raw = self._convert_from_words(mo_words, "ASCII")
             mo_id = str(mo_id_raw) if mo_id_raw else ""
             
-            product_tmpl_id_raw = self._convert_from_words(data_words[9:11], "REAL", scale=1)
-            consumption_raw = self._convert_from_words(data_words[11:13], "REAL", scale=100)
+            product_tmpl_id_raw = self._convert_from_words(
+                product_words,
+                self._product_type,
+                scale=self._product_scale,
+            )
+            consumption_raw = self._convert_from_words(
+                consumption_words,
+                self._consumption_type,
+                scale=self._consumption_scale,
+            )
             
             # Validation
             if not mo_id or len(mo_id.strip()) == 0:
@@ -257,6 +349,7 @@ class PLCManualWeighingService:
             result = {
                 "batch": int(batch) if batch else 0,
                 "mo_id": mo_id.strip(),
+                "product_id": int(product_tmpl_id),
                 "product_tmpl_id": int(product_tmpl_id),
                 "consumption": float(consumption),
                 "handshake_flag": handshake_flag,
@@ -284,10 +377,10 @@ class PLCManualWeighingService:
         if not mo_id:
             return False, "MO ID is empty"
         
-        # Validate Product ID
-        product_tmpl_id = data.get("product_tmpl_id", 0)
-        if not isinstance(product_tmpl_id, int) or product_tmpl_id <= 0:
-            return False, f"Invalid product_tmpl_id: {product_tmpl_id}"
+        # Validate Product ID (primary: product_id, fallback: product_tmpl_id)
+        product_id = data.get("product_id", data.get("product_tmpl_id", 0))
+        if not isinstance(product_id, int) or product_id <= 0:
+            return False, f"Invalid product_id: {product_id}"
         
         # Validate Consumption quantity
         consumption = data.get("consumption", 0)
@@ -306,12 +399,13 @@ class PLCManualWeighingService:
         """
         try:
             mo_id = data.get("mo_id", "").strip()
-            product_tmpl_id = data.get("product_tmpl_id", 0)
+            product_id = data.get("product_id", data.get("product_tmpl_id", 0))
             consumption = data.get("consumption", 0)
             
             payload = {
                 "mo_id": mo_id,
-                "product_tmpl_id": product_tmpl_id,
+                "product_id": product_id,
+                "product_tmpl_id": product_id,
                 "quantity": consumption,
                 "equipment_id": "WEIGH_SCALE_01",  # Manual weighing station ID
                 "timestamp": data.get("timestamp", datetime.now().isoformat()),
@@ -357,17 +451,17 @@ class PLCManualWeighingService:
     
     def mark_handshake(self) -> bool:
         """
-        Mark handshake flag D9013 = 1 setelah successful sync ke Odoo.
+        Mark handshake flag manual weighing = 1 setelah successful sync ke Odoo.
         
         Returns True jika berhasil, False jika gagal.
         """
         try:
-            # Use handshake service to set D9013 = 1
+            # Use handshake service to set configured manual weighing flag = 1
             result = self.handshake_service.mark_manual_weighing_as_read()
             if result:
-                logger.info("Marked D9013 (manual weighing read) as read")
+                logger.info("Marked manual weighing handshake as read")
             else:
-                logger.warning("Failed to mark D9013 as read")
+                logger.warning("Failed to mark manual weighing handshake as read")
             return result
         except Exception as e:
             logger.error(f"Error marking handshake: {e}")

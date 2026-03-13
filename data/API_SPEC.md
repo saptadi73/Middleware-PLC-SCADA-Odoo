@@ -1495,6 +1495,9 @@ curl -X POST http://localhost:8069/api/scada/mo/123/mark-done \
 
 **Update Manufacturing Order quantity dan material consumption berdasarkan Equipment Code SCADA**
 
+Referensi implementasi ringkas (kontrak final Middleware ↔ Odoo):
+- `data/ODOO_ENDPOINT_CONTRACT_UPDATE_WITH_CONSUMPTIONS.md`
+
 ```http
 POST /api/scada/mo/update-with-consumptions
 Auth: Session cookie
