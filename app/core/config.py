@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     app_name: str = "fastapi-scada-odoo"
     environment: str = "development"
     log_level: str = "info"
+    cors_allow_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080",
+        validation_alias="CORS_ALLOW_ORIGINS",
+    )
+    cors_allow_methods: str = Field(default="*", validation_alias="CORS_ALLOW_METHODS")
+    cors_allow_headers: str = Field(default="*", validation_alias="CORS_ALLOW_HEADERS")
+    cors_allow_credentials: bool = Field(default=True, validation_alias="CORS_ALLOW_CREDENTIALS")
 
     database_url: str = Field(..., validation_alias="DATABASE_URL")
 
@@ -59,6 +66,25 @@ class Settings(BaseSettings):
     # Batch capacity sanity warning thresholds (kg)
     expected_batch_max_kg: float = Field(default=1000.0, validation_alias="EXPECTED_BATCH_MAX_KG")
     batch_weight_warn_margin_kg: float = Field(default=50.0, validation_alias="BATCH_WEIGHT_WARN_MARGIN_KG")
+
+    @staticmethod
+    def _split_csv(value: str) -> list[str]:
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        origins = self._split_csv(self.cors_allow_origins)
+        return origins or ["*"]
+
+    @property
+    def cors_methods_list(self) -> list[str]:
+        methods = self._split_csv(self.cors_allow_methods)
+        return methods or ["*"]
+
+    @property
+    def cors_headers_list(self) -> list[str]:
+        headers = self._split_csv(self.cors_allow_headers)
+        return headers or ["*"]
 
 
 @lru_cache
