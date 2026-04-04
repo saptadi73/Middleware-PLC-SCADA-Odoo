@@ -62,6 +62,7 @@
     "mapping_structure": {
         "batch_number": {
             "field_name": "batch_number",
+            
             "data_type": "INT",
             "plc_address": "D9000",
             "description": "Batch/lot identifier for manual weighing (1 word, INT)",

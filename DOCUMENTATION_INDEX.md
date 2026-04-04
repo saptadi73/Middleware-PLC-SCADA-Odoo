@@ -40,6 +40,11 @@ Mau memahami implementation details? Baca ini:
    - Test results
    - Implementation checklist
 
+3. **MANUAL_REFERENCE_IMPLEMENTATION_GUIDE.md** - 5 min read
+   - Manual weighing reference MANUAL01..MANUAL10
+   - Task 7 integration overview
+   - ALL mode vs single-slot mode
+
 3. **.env.example** - 5 min skim
    - Configuration template
    - All available options
@@ -76,6 +81,7 @@ Lihat: **test_scheduler_config.py** source code
 |------|---------|----------|-----------|
 | **SCHEDULER_TASK_CONTROL_SUMMARY.md** | Implementation summary with examples | Managers/Engineers | 5-7 min |
 | **SCHEDULER_IMPLEMENTATION_COMPLETE.md** | Complete status & architecture | Project Leads | 10-12 min |
+| **MANUAL_REFERENCE_IMPLEMENTATION_GUIDE.md** | Panduan implementasi MANUAL_REFERENCE dan Task 7 | Engineers/Operators | 5-7 min |
 | **FRONTEND_API_REFERENCE.md** | Referensi endpoint middleware untuk frontend | Frontend/Backend Engineers | 8-10 min |
 
 ### Level 3: Deep Dive/Complete Reference (30 min)
@@ -146,6 +152,9 @@ ENABLE_TASK_4_HEALTH_MONITOR=false
 ### Use Case 7: "I need to run verification tests"
 → Execute: `python test_scheduler_config.py`
 
+### Use Case 8: "Saya ingin konfigurasi manual weighing MANUAL01..MANUAL10"
+→ Read: **MANUAL_REFERENCE_IMPLEMENTATION_GUIDE.md**
+
 ---
 
 ## 🎯 Documentation Map
@@ -157,6 +166,7 @@ ENABLE_TASK_4_HEALTH_MONITOR=false
 │   ├── SCHEDULER_TASK_CONTROL_SUMMARY.md ........ Implementation summary
 │   ├── SCHEDULER_CONTROL_GUIDE.md ............... Full technical guide
 │   └── SCHEDULER_IMPLEMENTATION_COMPLETE.md .... Architecture & status
+│   └── MANUAL_REFERENCE_IMPLEMENTATION_GUIDE.md . Manual weighing reference guide
 │
 ├── ⚙️ Configuration
 │   ├── .env.example ............................ Template

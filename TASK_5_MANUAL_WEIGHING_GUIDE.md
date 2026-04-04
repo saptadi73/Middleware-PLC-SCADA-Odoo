@@ -1,5 +1,16 @@
 # TASK 5: Manual Material Weighing - Implementation Guide
 
+> Historical note (April 2026)
+>
+> Dokumen ini adalah catatan implementasi awal saat manual weighing masih direncanakan sebagai TASK 5 dengan single memory block.
+>
+> Implementasi aktif saat ini sudah berubah menjadi:
+> - Scheduler: TASK 7 (manual weighing sync)
+> - Reference source: MANUAL_REFERENCE.json (MANUAL01-MANUAL10)
+> - Mode default: MANUAL_WEIGHING_REFERENCE_KEY=ALL (scan semua slot)
+>
+> Untuk referensi terbaru, gunakan MANUAL_REFERENCE_IMPLEMENTATION_GUIDE.md.
+
 **Date Created**: 2025-02-22  
 **Status**: Ready for Implementation  
 **Version**: 1.0
