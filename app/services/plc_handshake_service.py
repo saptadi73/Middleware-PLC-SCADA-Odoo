@@ -57,6 +57,9 @@ class PLCHandshakeService:
     
     def __init__(self):
         self.settings = get_settings()
+        self._manual_reference_key = str(
+            getattr(self.settings, "manual_weighing_reference_key", "MANUAL01")
+        ).strip().upper()
         self._read_status_by_batch: Dict[int, int] = {}
         self._write_status_by_batch: Dict[int, int] = {}
         self._write_mo_field_by_batch: Dict[int, tuple[int, int]] = {}
@@ -203,18 +206,53 @@ class PLCHandshakeService:
             )
 
     def _load_manual_weighing_status_address_from_mapping(self) -> None:
-        """Load manual weighing handshake address from ADDITIONAL_EQUIPMENT_REFERENCE.json."""
-        reference_path = Path(__file__).parent.parent / "reference" / "ADDITIONAL_EQUIPMENT_REFERENCE.json"
-        if not reference_path.exists():
-            logger.warning(
-                "ADDITIONAL_EQUIPMENT_REFERENCE.json not found at %s; using fallback manual handshake address D%s",
-                reference_path,
-                self._manual_weighing_status_address,
-            )
-            return
+        """Load manual weighing handshake address from MANUAL_REFERENCE.json (with legacy fallback)."""
+        reference_dir = Path(__file__).parent.parent / "reference"
+        manual_reference_path = reference_dir / "MANUAL_REFERENCE.json"
 
         try:
-            data = json.loads(reference_path.read_text(encoding="utf-8"))
+            if manual_reference_path.exists():
+                data = json.loads(manual_reference_path.read_text(encoding="utf-8"))
+                fields = data.get(self._manual_reference_key, [])
+                if isinstance(fields, list):
+                    for field in fields:
+                        info = str(field.get("Informasi") or "").strip().lower()
+                        if info != "status_manual_weigh_read":
+                            continue
+
+                        dm = str(field.get("DM") or field.get("DM - Memory") or "").strip().upper()
+                        match = re.match(r"D(\d+)", dm)
+                        if not match:
+                            continue
+
+                        self._manual_weighing_status_address = int(match.group(1))
+                        logger.info(
+                            "Loaded manual weighing handshake address from MANUAL_REFERENCE.json: key=%s addr=D%s",
+                            self._manual_reference_key,
+                            self._manual_weighing_status_address,
+                        )
+                        return
+
+                logger.warning(
+                    "status_manual_weigh_read not found for key %s in MANUAL_REFERENCE.json; falling back to legacy reference",
+                    self._manual_reference_key,
+                )
+            else:
+                logger.warning(
+                    "MANUAL_REFERENCE.json not found at %s; falling back to legacy reference",
+                    manual_reference_path,
+                )
+
+            legacy_path = reference_dir / "ADDITIONAL_EQUIPMENT_REFERENCE.json"
+            if not legacy_path.exists():
+                logger.warning(
+                    "ADDITIONAL_EQUIPMENT_REFERENCE.json not found at %s; using fallback manual handshake address D%s",
+                    legacy_path,
+                    self._manual_weighing_status_address,
+                )
+                return
+
+            data = json.loads(legacy_path.read_text(encoding="utf-8"))
             fields = data.get("ADDITIONAL", [])
             for field in fields:
                 info = str(field.get("Informasi") or "").strip().lower()
@@ -228,7 +266,7 @@ class PLCHandshakeService:
 
                 self._manual_weighing_status_address = int(match.group(1))
                 logger.info(
-                    "Loaded manual weighing handshake address from reference: D%s",
+                    "Loaded manual weighing handshake address from ADDITIONAL_EQUIPMENT_REFERENCE.json: D%s",
                     self._manual_weighing_status_address,
                 )
                 return

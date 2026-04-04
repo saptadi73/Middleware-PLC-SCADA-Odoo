@@ -1,6 +1,6 @@
 """
 PLC Manual Weighing Service
-Membaca data penimbangan material manual dari PLC menggunakan ADDITIONAL_EQUIPMENT_REFERENCE.json.
+Membaca data penimbangan material manual dari PLC menggunakan MANUAL_REFERENCE.json.
 Includes handshake logic dan sync ke Odoo material consumption API.
 """
 import json
@@ -32,6 +32,9 @@ class PLCManualWeighingService:
     
     def __init__(self):
         self.settings = get_settings()
+        self._manual_reference_key = str(
+            getattr(self.settings, "manual_weighing_reference_key", "MANUAL01")
+        ).strip().upper()
         self.mapping: List[Dict[str, Any]] = []
         self.mapping_structure: Dict[str, Any] = {}
         self._field_by_info: Dict[str, Dict[str, Any]] = {}
@@ -53,15 +56,46 @@ class PLCManualWeighingService:
         self.handshake_service = get_handshake_service()
     
     def _load_reference(self):
-        """Load ADDITIONAL_EQUIPMENT_REFERENCE.json sebagai mapping reference."""
-        reference_path = Path(__file__).parent.parent / "reference" / "ADDITIONAL_EQUIPMENT_REFERENCE.json"
-        
-        if not reference_path.exists():
-            logger.warning(f"ADDITIONAL_EQUIPMENT_REFERENCE.json not found at {reference_path}")
-            return
-        
+        """Load MANUAL_REFERENCE.json sebagai mapping reference (with legacy fallback)."""
+        reference_dir = Path(__file__).parent.parent / "reference"
+        manual_reference_path = reference_dir / "MANUAL_REFERENCE.json"
+
         try:
-            with open(reference_path, "r", encoding="utf-8") as f:
+            if manual_reference_path.exists():
+                with open(manual_reference_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                selected_mapping = data.get(self._manual_reference_key)
+                if isinstance(selected_mapping, list) and selected_mapping:
+                    self.mapping = selected_mapping
+                    self.mapping_structure = {"source": "MANUAL_REFERENCE", "key": self._manual_reference_key}
+                    self._field_by_info = {
+                        str(item.get("Informasi") or "").strip().lower(): item
+                        for item in self.mapping
+                    }
+                    self._configure_manual_layout_from_reference()
+                    logger.info(
+                        "Loaded PLC manual weighing mapping from MANUAL_REFERENCE.json: key=%s fields=%s",
+                        self._manual_reference_key,
+                        len(self.mapping),
+                    )
+                    return
+
+                logger.warning(
+                    "MANUAL_REFERENCE.json exists but key %s is missing/invalid. Falling back to legacy reference.",
+                    self._manual_reference_key,
+                )
+            else:
+                logger.warning(
+                    "MANUAL_REFERENCE.json not found at %s. Falling back to legacy reference.",
+                    manual_reference_path,
+                )
+
+            legacy_path = reference_dir / "ADDITIONAL_EQUIPMENT_REFERENCE.json"
+            if not legacy_path.exists():
+                logger.warning("ADDITIONAL_EQUIPMENT_REFERENCE.json not found at %s", legacy_path)
+                return
+
+            with open(legacy_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.mapping = data.get("ADDITIONAL", [])
                 self.mapping_structure = data.get("mapping_structure", {})
@@ -71,10 +105,12 @@ class PLCManualWeighingService:
                 for item in self.mapping
             }
             self._configure_manual_layout_from_reference()
-            
-            logger.info(f"Loaded PLC manual weighing mapping: {len(self.mapping)} fields")
+            logger.info(
+                "Loaded PLC manual weighing mapping from ADDITIONAL_EQUIPMENT_REFERENCE.json: fields=%s",
+                len(self.mapping),
+            )
         except Exception as e:
-            logger.error(f"Error loading additional equipment reference: {e}")
+            logger.error(f"Error loading manual weighing reference: {e}")
 
     def _get_field(self, info_name: str) -> Optional[Dict[str, Any]]:
         return self._field_by_info.get(info_name.strip().lower())
