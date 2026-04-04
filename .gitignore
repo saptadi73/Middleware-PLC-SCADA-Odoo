@@ -9,6 +9,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Encrypted files
+*.enc
+
 # OS
 .DS_Store
 Thumbs.db
