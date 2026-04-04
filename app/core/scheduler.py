@@ -630,7 +630,7 @@ async def monitor_batch_health_task():
 
 async def equipment_failure_monitoring_task():
     """
-    Task 5: Monitor dan read equipment failure data dari PLC secara periodik.
+    Task 7: Monitor dan read equipment failure data dari PLC secara periodik.
     Logic:
     1. Read equipment failure reference data dari PLC menggunakan EQUIPMENT_FAILURE_REFERENCE.json
     2. Simpan ke local database dengan change detection (save_if_changed)
@@ -638,26 +638,26 @@ async def equipment_failure_monitoring_task():
     4. Log semua tahap pipeline untuk debugging
     
     Debug Flow:
-    [TASK 5] START
-    [TASK 5] Step 1: Read from PLC
+    [TASK 7] START
+    [TASK 7] Step 1: Read from PLC
       - Equipment: {equipment_code}
       - Failure: {failure_info}
       - Timestamp: {failure_timestamp}
-    [TASK 5] Step 2: Local DB Save
+    [TASK 7] Step 2: Local DB Save
       - Status: {"saved": true/false}
       - Record ID: {id}
-    [TASK 5] Step 3: Odoo API Sync
+    [TASK 7] Step 3: Odoo API Sync
       - Auth: Authenticating...
       - Request: POST /api/scada/failure-report
       - Response: {status}
-    [TASK 5] END
+    [TASK 7] END
     """
     try:
-        logger.info("[TASK 5] ========== START Equipment Failure Monitoring Task ==========")
+        logger.info("[TASK 7] ========== START Equipment Failure Monitoring Task ==========")
         
         try:
             # STEP 1: READ FROM PLC
-            logger.info("[TASK 5] Step 1: Reading equipment failure from PLC...")
+            logger.info("[TASK 7] Step 1: Reading equipment failure from PLC...")
             failure_service = get_equipment_failure_service()
             failure_data = await failure_service.read_equipment_failure_data()
             
@@ -667,7 +667,7 @@ async def equipment_failure_monitoring_task():
                 failure_timestamp = failure_data.get("failure_timestamp")
                 
                 logger.warning(
-                    f"[TASK 5] ? Equipment Failure Detected from PLC:\n"
+                    f"[TASK 7] ? Equipment Failure Detected from PLC:\n"
                     f"  Equipment Code: {equipment_code} (type: {type(equipment_code).__name__})\n"
                     f"  Failure Type: {failure_info} (type: {type(failure_info).__name__})\n"
                     f"  Timestamp: {failure_timestamp} (type: {type(failure_timestamp).__name__})"
@@ -680,17 +680,17 @@ async def equipment_failure_monitoring_task():
                             failure_timestamp,
                             "%Y-%m-%d %H:%M:%S",
                         )
-                        logger.info(f"[TASK 5] ? Parsed failure_date: {failure_date}")
+                        logger.info(f"[TASK 7] ? Parsed failure_date: {failure_date}")
                     except ValueError as e:
                         logger.warning(
-                            f"[TASK 5] ? Invalid timestamp format: {failure_timestamp} - {e}"
+                            f"[TASK 7] ? Invalid timestamp format: {failure_timestamp} - {e}"
                         )
 
                 if equipment_code and failure_info and failure_date:
                     db = SessionLocal()
                     try:
                         # STEP 2: SAVE TO LOCAL DATABASE
-                        logger.info("[TASK 5] Step 2: Saving to local database with change detection...")
+                        logger.info("[TASK 7] Step 2: Saving to local database with change detection...")
                         db_service = EquipmentFailureDbService(db)
                         save_result = db_service.save_if_changed(
                             equipment_code=str(equipment_code),
@@ -701,14 +701,14 @@ async def equipment_failure_monitoring_task():
                         
                         if save_result.get("saved"):
                             logger.info(
-                                f"[TASK 5] ? Equipment failure saved to DB\n"
+                                f"[TASK 7] ? Equipment failure saved to DB\n"
                                 f"  Record ID: {save_result.get('record_id')}\n"
                                 f"  Equipment: {equipment_code}\n"
                                 f"  Description: {failure_info}"
                             )
                             
                             # STEP 3: SYNC TO ODOO API
-                            logger.info("[TASK 5] Step 3: Syncing to Odoo via API...")
+                            logger.info("[TASK 7] Step 3: Syncing to Odoo via API...")
                             try:
                                 failure_api_service = await get_equipment_failure_api_service(db)
                                 
@@ -716,7 +716,7 @@ async def equipment_failure_monitoring_task():
                                 failure_date_str = failure_date.strftime("%Y-%m-%d %H:%M:%S")
                                 
                                 logger.info(
-                                    f"[TASK 5] Calling Odoo API create_failure_report:\n"
+                                    f"[TASK 7] Calling Odoo API create_failure_report:\n"
                                     f"  URL: {get_settings().odoo_base_url}/api/scada/equipment-failure\n"
                                     f"  Equipment: {equipment_code}\n"
                                     f"  Description: {failure_info}\n"
@@ -731,25 +731,25 @@ async def equipment_failure_monitoring_task():
                                 
                                 if odoo_result.get("success"):
                                     logger.info(
-                                        f"[TASK 5] ? Odoo sync successful\n"
+                                        f"[TASK 7] ? Odoo sync successful\n"
                                         f"  Status: {odoo_result.get('status')}\n"
                                         f"  Message: {odoo_result.get('message')}\n"
                                         f"  Data: {odoo_result.get('data')}"
                                     )
                                 else:
                                     logger.error(
-                                        f"[TASK 5] ? Odoo sync failed\n"
+                                        f"[TASK 7] ? Odoo sync failed\n"
                                         f"  Status: {odoo_result.get('status')}\n"
                                         f"  Message: {odoo_result.get('message')}"
                                     )
                             except Exception as odoo_error:
                                 logger.error(
-                                    f"[TASK 5] ? Exception during Odoo sync: {odoo_error}",
+                                    f"[TASK 7] ? Exception during Odoo sync: {odoo_error}",
                                     exc_info=True
                                 )
                         else:
                             logger.debug(
-                                f"[TASK 5] ? Skipped DB save (duplicate detection)\n"
+                                f"[TASK 7] ? Skipped DB save (duplicate detection)\n"
                                 f"  Reason: {save_result.get('reason')}\n"
                                 f"  Equipment: {equipment_code}"
                             )
@@ -757,22 +757,22 @@ async def equipment_failure_monitoring_task():
                         db.close()
                 else:
                     logger.debug(
-                        f"[TASK 5] ? Missing data for DB save:\n"
+                        f"[TASK 7] ? Missing data for DB save:\n"
                         f"  equipment_code={equipment_code}\n"
                         f"  failure_info={failure_info}\n"
                         f"  failure_date={failure_date}"
                     )
                 
             else:
-                logger.debug("[TASK 5] No equipment failure detected or read failed")
+                logger.debug("[TASK 7] No equipment failure detected or read failed")
                 
         except Exception as e:
-            logger.error(f"[TASK 5] Error reading equipment failure from PLC: {e}", exc_info=True)
+            logger.error(f"[TASK 7] Error reading equipment failure from PLC: {e}", exc_info=True)
         
-        logger.info("[TASK 5] ========== END Equipment Failure Monitoring Task ==========\n")
+        logger.info("[TASK 7] ========== END Equipment Failure Monitoring Task ==========\n")
             
     except Exception as exc:
-        logger.exception("[TASK 5] Error in equipment failure monitoring task: %s", str(exc))
+        logger.exception("[TASK 7] Error in equipment failure monitoring task: %s", str(exc))
 
 
 async def system_log_cleanup_task():
@@ -824,7 +824,7 @@ async def system_log_cleanup_task():
 
 async def manual_weighing_sync_task():
     """
-    Task 7: Read manual weighing data dari PLC dan sync ke Odoo.
+    Task 5: Read manual weighing data dari PLC dan sync ke Odoo.
 
     Flow:
     1. Read manual weighing reference area dari PLC
@@ -833,16 +833,16 @@ async def manual_weighing_sync_task():
     4. Mark handshake sebagai sudah terbaca setelah sync sukses
     """
     try:
-        logger.info("[TASK 7] ===== START Manual Weighing Sync Task =====")
+        logger.info("[TASK 5] ===== START Manual Weighing Sync Task =====")
         service = get_manual_weighing_service()
         ok = service.read_and_sync()
         if ok:
-            logger.info("[TASK 7] Manual weighing cycle completed")
+            logger.info("[TASK 5] Manual weighing cycle completed")
         else:
-            logger.warning("[TASK 7] Manual weighing cycle failed (will retry next interval)")
-        logger.info("[TASK 7] ===== END Manual Weighing Sync Task =====")
+            logger.warning("[TASK 5] Manual weighing cycle failed (will retry next interval)")
+        logger.info("[TASK 5] ===== END Manual Weighing Sync Task =====")
     except Exception as exc:
-        logger.exception("[TASK 7] Error in manual weighing sync task: %s", str(exc))
+        logger.exception("[TASK 5] Error in manual weighing sync task: %s", str(exc))
 
 
 def _create_scheduler_instance() -> AsyncIOScheduler:
@@ -890,12 +890,12 @@ def _get_scheduler_task_configs() -> list[dict[str, Any]]:
             "func": monitor_batch_health_task,
         },
         {
-            "id": "equipment_failure_monitor",
+            "id": "manual_weighing_sync",
             "label": "Task 5",
-            "description": "Equipment failure monitoring scheduler",
-            "enabled_attr": "enable_task_5_equipment_failure",
-            "interval_attr": "equipment_failure_interval_minutes",
-            "func": equipment_failure_monitoring_task,
+            "description": "Manual weighing sync scheduler",
+            "enabled_attr": "enable_task_5_manual_weighing",
+            "interval_attr": "manual_weighing_interval_minutes",
+            "func": manual_weighing_sync_task,
         },
         {
             "id": "system_log_cleanup",
@@ -906,12 +906,12 @@ def _get_scheduler_task_configs() -> list[dict[str, Any]]:
             "func": system_log_cleanup_task,
         },
         {
-            "id": "manual_weighing_sync",
+            "id": "equipment_failure_monitor",
             "label": "Task 7",
-            "description": "Manual weighing sync scheduler",
-            "enabled_attr": "enable_task_7_manual_weighing",
-            "interval_attr": "manual_weighing_interval_minutes",
-            "func": manual_weighing_sync_task,
+            "description": "Equipment failure monitoring scheduler",
+            "enabled_attr": "enable_task_7_equipment_failure",
+            "interval_attr": "equipment_failure_interval_minutes",
+            "func": equipment_failure_monitoring_task,
         },
     ]
 
@@ -1030,9 +1030,9 @@ def start_scheduler(force: bool = False) -> bool:
         f"  - Task 2: PLC read sync ({settings.plc_read_interval_minutes} min) - {'?' if settings.enable_task_2_plc_read else '?'}\n"
         f"  - Task 3: Process completed ({settings.process_completed_interval_minutes} min) - {'?' if settings.enable_task_3_process_completed else '?'}\n"
         f"  - Task 4: Health monitoring ({settings.health_monitor_interval_minutes} min) - {'?' if settings.enable_task_4_health_monitor else '?'}\n"
-        f"  - Task 5: Equipment failure ({settings.equipment_failure_interval_minutes} min) - {'?' if settings.enable_task_5_equipment_failure else '?'}\n"
+        f"  - Task 5: Manual weighing ({settings.manual_weighing_interval_minutes} min) - {'?' if settings.enable_task_5_manual_weighing else '?'}\n"
         f"  - Task 6: Log cleanup ({settings.log_cleanup_interval_minutes} min) - {'?' if settings.enable_task_6_log_cleanup else '?'}\n"
-        f"  - Task 7: Manual weighing ({settings.manual_weighing_interval_minutes} min) - {'?' if settings.enable_task_7_manual_weighing else '?'}"
+        f"  - Task 7: Equipment failure ({settings.equipment_failure_interval_minutes} min) - {'?' if settings.enable_task_7_equipment_failure else '?'}"
     )
     return True
 

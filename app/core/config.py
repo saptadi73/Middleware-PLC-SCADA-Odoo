@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,9 +48,15 @@ class Settings(BaseSettings):
     enable_task_2_plc_read: bool = Field(default=True, validation_alias="ENABLE_TASK_2_PLC_READ")
     enable_task_3_process_completed: bool = Field(default=True, validation_alias="ENABLE_TASK_3_PROCESS_COMPLETED")
     enable_task_4_health_monitor: bool = Field(default=True, validation_alias="ENABLE_TASK_4_HEALTH_MONITOR")
-    enable_task_5_equipment_failure: bool = Field(default=True, validation_alias="ENABLE_TASK_5_EQUIPMENT_FAILURE")
+    enable_task_5_manual_weighing: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_TASK_5_MANUAL_WEIGHING", "ENABLE_TASK_7_MANUAL_WEIGHING"),
+    )
     enable_task_6_log_cleanup: bool = Field(default=True, validation_alias="ENABLE_TASK_6_LOG_CLEANUP")
-    enable_task_7_manual_weighing: bool = Field(default=True, validation_alias="ENABLE_TASK_7_MANUAL_WEIGHING")
+    enable_task_7_equipment_failure: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_TASK_7_EQUIPMENT_FAILURE", "ENABLE_TASK_5_EQUIPMENT_FAILURE"),
+    )
     
     # Auto-sync settings
     sync_interval_minutes: int = Field(default=60, validation_alias="SYNC_INTERVAL_MINUTES")
@@ -59,9 +65,15 @@ class Settings(BaseSettings):
     process_completed_interval_minutes: int = Field(default=3, validation_alias="PROCESS_COMPLETED_INTERVAL_MINUTES")
     health_monitor_interval_minutes: int = Field(default=10, validation_alias="HEALTH_MONITOR_INTERVAL_MINUTES")
     batch_stuck_threshold_minutes: int = Field(default=15, validation_alias="BATCH_STUCK_THRESHOLD_MINUTES")
-    equipment_failure_interval_minutes: int = Field(default=5, validation_alias="EQUIPMENT_FAILURE_INTERVAL_MINUTES")
+    manual_weighing_interval_minutes: int = Field(
+        default=2,
+        validation_alias=AliasChoices("TASK_5_MANUAL_WEIGHING_INTERVAL_MINUTES", "MANUAL_WEIGHING_INTERVAL_MINUTES"),
+    )
+    equipment_failure_interval_minutes: int = Field(
+        default=5,
+        validation_alias=AliasChoices("TASK_7_EQUIPMENT_FAILURE_INTERVAL_MINUTES", "EQUIPMENT_FAILURE_INTERVAL_MINUTES"),
+    )
     log_cleanup_interval_minutes: int = Field(default=1440, validation_alias="LOG_CLEANUP_INTERVAL_MINUTES")
-    manual_weighing_interval_minutes: int = Field(default=2, validation_alias="MANUAL_WEIGHING_INTERVAL_MINUTES")
     log_retention_days: int = Field(default=30, validation_alias="LOG_RETENTION_DAYS")
     log_cleanup_keep_last: int = Field(default=1000, validation_alias="LOG_CLEANUP_KEEP_LAST")
     manual_weighing_reference_key: str = Field(
