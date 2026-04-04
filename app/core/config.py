@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     log_retention_days: int = Field(default=30, validation_alias="LOG_RETENTION_DAYS")
     log_cleanup_keep_last: int = Field(default=1000, validation_alias="LOG_CLEANUP_KEEP_LAST")
     manual_weighing_reference_key: str = Field(
-        default="MANUAL01",
+        default="ALL",
         validation_alias="MANUAL_WEIGHING_REFERENCE_KEY",
     )
 

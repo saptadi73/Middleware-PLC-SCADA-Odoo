@@ -486,6 +486,29 @@ class PLCHandshakeService:
         except Exception as exc:
             logger.error(f"Error marking manual weighing as read: {exc}", exc_info=True)
             return False
+
+    def mark_manual_weighing_address_as_read(self, address: int) -> bool:
+        """
+        Mark manual weighing data as read by Middleware on a specific DM address.
+
+        This is used when manual weighing has multiple slots (MANUAL01..MANUAL10)
+        and each slot has its own handshake address.
+
+        Returns:
+            True if successfully marked, False otherwise
+        """
+        try:
+            self._write_status_flag(int(address), 1)
+            logger.info("Marked manual weighing as read (D%s=1)", int(address))
+            return True
+        except Exception as exc:
+            logger.error(
+                "Error marking manual weighing as read at D%s: %s",
+                int(address),
+                exc,
+                exc_info=True,
+            )
+            return False
     
     def check_manual_weighing_status(self) -> bool:
         """
