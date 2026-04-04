@@ -5,6 +5,7 @@ Enhanced Background Scheduler for Multiple Tasks:
 3. Process completed/failed batches untuk update ke Odoo dan move ke history
 4. Monitor dan notification untuk batch failures
 5. Read equipment failure data dari PLC (periodic)
+6. Read and sync manual weighing data ke Odoo (periodic)
 """
 import asyncio
 import logging
@@ -24,6 +25,7 @@ from app.services.plc_sync_service import get_plc_sync_service
 from app.services.mo_history_service import get_mo_history_service
 from app.services.odoo_consumption_service import get_consumption_service
 from app.services.plc_equipment_failure_service import get_equipment_failure_service
+from app.services.plc_manual_weighing_service import get_manual_weighing_service
 from app.services.equipment_failure_db_service import EquipmentFailureDbService
 from app.services.equipment_failure_service import EquipmentFailureService
 from app.models.system_log import SystemLog
@@ -820,6 +822,29 @@ async def system_log_cleanup_task():
         db.close()
 
 
+async def manual_weighing_sync_task():
+    """
+    Task 7: Read manual weighing data dari PLC dan sync ke Odoo.
+
+    Flow:
+    1. Read manual weighing reference area dari PLC
+    2. Validate payload (MO, product, quantity)
+    3. Sync ke endpoint Odoo /api/scada/material-consumption
+    4. Mark handshake sebagai sudah terbaca setelah sync sukses
+    """
+    try:
+        logger.info("[TASK 7] ===== START Manual Weighing Sync Task =====")
+        service = get_manual_weighing_service()
+        ok = service.read_and_sync()
+        if ok:
+            logger.info("[TASK 7] Manual weighing cycle completed")
+        else:
+            logger.warning("[TASK 7] Manual weighing cycle failed (will retry next interval)")
+        logger.info("[TASK 7] ===== END Manual Weighing Sync Task =====")
+    except Exception as exc:
+        logger.exception("[TASK 7] Error in manual weighing sync task: %s", str(exc))
+
+
 def _create_scheduler_instance() -> AsyncIOScheduler:
     return AsyncIOScheduler(
         job_defaults={
@@ -879,6 +904,14 @@ def _get_scheduler_task_configs() -> list[dict[str, Any]]:
             "enabled_attr": "enable_task_6_log_cleanup",
             "interval_attr": "log_cleanup_interval_minutes",
             "func": system_log_cleanup_task,
+        },
+        {
+            "id": "manual_weighing_sync",
+            "label": "Task 7",
+            "description": "Manual weighing sync scheduler",
+            "enabled_attr": "enable_task_7_manual_weighing",
+            "interval_attr": "manual_weighing_interval_minutes",
+            "func": manual_weighing_sync_task,
         },
     ]
 
@@ -992,13 +1025,14 @@ def start_scheduler(force: bool = False) -> bool:
     scheduler.start()
     
     logger.info(
-        f"??? Enhanced Scheduler STARTED with {task_count}/6 tasks enabled ???\n"
+        f"??? Enhanced Scheduler STARTED with {task_count}/7 tasks enabled ???\n"
         f"  - Task 1: Auto-sync MO ({settings.sync_interval_minutes} min) - {'?' if settings.enable_task_1_auto_sync else '?'}\n"
         f"  - Task 2: PLC read sync ({settings.plc_read_interval_minutes} min) - {'?' if settings.enable_task_2_plc_read else '?'}\n"
         f"  - Task 3: Process completed ({settings.process_completed_interval_minutes} min) - {'?' if settings.enable_task_3_process_completed else '?'}\n"
         f"  - Task 4: Health monitoring ({settings.health_monitor_interval_minutes} min) - {'?' if settings.enable_task_4_health_monitor else '?'}\n"
         f"  - Task 5: Equipment failure ({settings.equipment_failure_interval_minutes} min) - {'?' if settings.enable_task_5_equipment_failure else '?'}\n"
-        f"  - Task 6: Log cleanup ({settings.log_cleanup_interval_minutes} min) - {'?' if settings.enable_task_6_log_cleanup else '?'}"
+        f"  - Task 6: Log cleanup ({settings.log_cleanup_interval_minutes} min) - {'?' if settings.enable_task_6_log_cleanup else '?'}\n"
+        f"  - Task 7: Manual weighing ({settings.manual_weighing_interval_minutes} min) - {'?' if settings.enable_task_7_manual_weighing else '?'}"
     )
     return True
 
