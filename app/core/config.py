@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     enable_task_4_health_monitor: bool = Field(default=True, validation_alias="ENABLE_TASK_4_HEALTH_MONITOR")
     enable_task_5_equipment_failure: bool = Field(default=True, validation_alias="ENABLE_TASK_5_EQUIPMENT_FAILURE")
     enable_task_6_log_cleanup: bool = Field(default=True, validation_alias="ENABLE_TASK_6_LOG_CLEANUP")
+    enable_task_7_manual_weighing: bool = Field(default=True, validation_alias="ENABLE_TASK_7_MANUAL_WEIGHING")
     
     # Auto-sync settings
     sync_interval_minutes: int = Field(default=60, validation_alias="SYNC_INTERVAL_MINUTES")
@@ -60,6 +61,7 @@ class Settings(BaseSettings):
     batch_stuck_threshold_minutes: int = Field(default=15, validation_alias="BATCH_STUCK_THRESHOLD_MINUTES")
     equipment_failure_interval_minutes: int = Field(default=5, validation_alias="EQUIPMENT_FAILURE_INTERVAL_MINUTES")
     log_cleanup_interval_minutes: int = Field(default=1440, validation_alias="LOG_CLEANUP_INTERVAL_MINUTES")
+    manual_weighing_interval_minutes: int = Field(default=2, validation_alias="MANUAL_WEIGHING_INTERVAL_MINUTES")
     log_retention_days: int = Field(default=30, validation_alias="LOG_RETENTION_DAYS")
     log_cleanup_keep_last: int = Field(default=1000, validation_alias="LOG_CLEANUP_KEEP_LAST")
     manual_weighing_reference_key: str = Field(

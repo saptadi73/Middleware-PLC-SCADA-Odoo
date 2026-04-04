@@ -6,11 +6,11 @@ Includes handshake logic dan sync ke Odoo material consumption API.
 import json
 import logging
 import re
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import requests
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from app.core.config import get_settings
 from app.services.fins_client import FinsUdpClient
@@ -131,12 +131,18 @@ class PLCManualWeighingService:
             return
 
         try:
+            batch = cast(Dict[str, Any], batch_field)
+            mo = cast(Dict[str, Any], mo_field)
+            product = cast(Dict[str, Any], product_field)
+            consumption = cast(Dict[str, Any], consumption_field)
+            handshake = cast(Dict[str, Any], handshake_field)
+
             parsed: Dict[str, Tuple[int, int]] = {}
-            parsed["batch"] = self._parse_dm_address(str(batch_field.get("DM") or ""))
-            parsed["mo"] = self._parse_dm_address(str(mo_field.get("DM") or ""))
-            parsed["product"] = self._parse_dm_address(str(product_field.get("DM") or ""))
-            parsed["consumption"] = self._parse_dm_address(str(consumption_field.get("DM") or ""))
-            parsed["handshake"] = self._parse_dm_address(str(handshake_field.get("DM") or ""))
+            parsed["batch"] = self._parse_dm_address(str(batch.get("DM") or ""))
+            parsed["mo"] = self._parse_dm_address(str(mo.get("DM") or ""))
+            parsed["product"] = self._parse_dm_address(str(product.get("DM") or ""))
+            parsed["consumption"] = self._parse_dm_address(str(consumption.get("DM") or ""))
+            parsed["handshake"] = self._parse_dm_address(str(handshake.get("DM") or ""))
 
             min_addr = min(start for start, _ in parsed.values())
             max_addr = max((start + count - 1) for start, count in parsed.values())
@@ -154,12 +160,12 @@ class PLCManualWeighingService:
             self._consumption_slice = _slice_for("consumption")
             self._handshake_index = _slice_for("handshake")[0]
 
-            self._batch_type = str(batch_field.get("Data Type") or "INT")
-            self._batch_scale = int(batch_field.get("scale") or 1)
-            self._product_type = str(product_field.get("Data Type") or "INT")
-            self._product_scale = int(product_field.get("scale") or 1)
-            self._consumption_type = str(consumption_field.get("Data Type") or "REAL")
-            self._consumption_scale = int(consumption_field.get("scale") or 100)
+            self._batch_type = str(batch.get("Data Type") or "INT")
+            self._batch_scale = int(batch.get("scale") or 1)
+            self._product_type = str(product.get("Data Type") or "INT")
+            self._product_scale = int(product.get("scale") or 1)
+            self._consumption_type = str(consumption.get("Data Type") or "REAL")
+            self._consumption_scale = int(consumption.get("scale") or 100)
 
             logger.info(
                 "Manual weighing layout loaded from reference: D%s-D%s (handshake index=%s, addr=D%s)",
@@ -455,19 +461,32 @@ class PLCManualWeighingService:
             
             # POST to Odoo API
             endpoint = f"{self.base_url}/api/scada/material-consumption"
-            response = requests.post(
+            body = json.dumps(payload).encode("utf-8")
+            headers = {"Content-Type": "application/json"}
+            if cookies:
+                headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+            req = urllib.request.Request(
                 endpoint,
-                json=payload,
-                cookies=cookies,
-                timeout=10,
+                data=body,
+                headers=headers,
+                method="POST",
             )
-            
-            if response.status_code != 200:
-                error = response.json().get("message", response.text)
+
+            with urllib.request.urlopen(req, timeout=10) as response:
+                raw = response.read().decode("utf-8")
+                status_code = int(getattr(response, "status", 200))
+
+            try:
+                result = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                result = {"message": raw}
+
+            if status_code != 200:
+                error = str(result.get("message") or raw or "Unknown error")
                 logger.error(f"Odoo API error: {error}")
                 return False, f"Odoo sync failed: {error}"
-            
-            result = response.json()
+
             if result.get("status") != "success":
                 error = result.get("message", "Unknown error")
                 logger.error(f"Odoo API returned error: {error}")
@@ -476,7 +495,7 @@ class PLCManualWeighingService:
             logger.info(f"Successfully synced weighing data to Odoo for MO: {mo_id}")
             return True, None
         
-        except requests.RequestException as e:
+        except urllib.error.URLError as e:
             error = f"Request error: {str(e)}"
             logger.error(error)
             return False, error
