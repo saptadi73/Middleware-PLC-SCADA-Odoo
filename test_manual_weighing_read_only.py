@@ -40,7 +40,7 @@ def _get_layouts(
     ]
 
 
-def run(slot: Optional[int], show_empty: bool) -> int:
+def run(slot: Optional[int], show_empty: bool, mark_handshake: bool) -> int:
     service = get_manual_weighing_service()
     layouts = _get_layouts(service.layouts, slot)
 
@@ -48,7 +48,9 @@ def run(slot: Optional[int], show_empty: bool) -> int:
     print("Mode baca PLC manual weighing saja")
     print("Tidak sync ke Odoo")
     print("Tidak update database")
-    print("Tidak mark/reset handshake")
+    print(
+        "Mark handshake aktif setelah baca" if mark_handshake else "Tidak mark/reset handshake"
+    )
 
     if not layouts:
         print("\nTidak ada layout manual weighing yang cocok.")
@@ -59,6 +61,7 @@ def run(slot: Optional[int], show_empty: bool) -> int:
     print(f"\nTotal layout dibaca: {len(layouts)}")
 
     valid_results: List[Dict[str, Any]] = []
+    handshake_marked = 0
 
     for index, layout in enumerate(layouts, start=1):
         reference_key = str(layout.get("reference_key") or f"LAYOUT_{index}")
@@ -84,9 +87,25 @@ def run(slot: Optional[int], show_empty: bool) -> int:
         print(f"Handshake Flag: {data.get('handshake_flag')}")
         print(f"Timestamp     : {data.get('timestamp')}")
 
+        if mark_handshake:
+            handshake_address = data.get("handshake_address")
+            target_address = (
+                int(handshake_address)
+                if isinstance(handshake_address, (int, float))
+                else None
+            )
+            marked = service.mark_handshake(target_address)
+            if marked:
+                handshake_marked += 1
+                print(f"Handshake ACK : sukses (D{target_address})")
+            else:
+                print("Handshake ACK : gagal")
+
     _print_section("RINGKASAN")
     print(f"Layout discan : {len(layouts)}")
     print(f"Data valid    : {len(valid_results)}")
+    if mark_handshake:
+        print(f"Handshake ACK : {handshake_marked}")
 
     if not valid_results:
         print("\nTidak ada hasil manual weighing baru yang bisa ditampilkan.")
@@ -120,9 +139,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Tampilkan juga slot yang tidak punya data baru",
     )
+    parser.add_argument(
+        "--mark-handshake",
+        action="store_true",
+        help="Set status_manual_weigh_read=1 setelah baca data valid (tetap tanpa sync Odoo)",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    raise SystemExit(run(slot=args.slot, show_empty=args.show_empty))
+    raise SystemExit(
+        run(
+            slot=args.slot,
+            show_empty=args.show_empty,
+            mark_handshake=args.mark_handshake,
+        )
+    )
