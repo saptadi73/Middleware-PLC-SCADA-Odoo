@@ -213,6 +213,47 @@ class PLCHandshakeService:
         try:
             if manual_reference_path.exists():
                 data = json.loads(manual_reference_path.read_text(encoding="utf-8"))
+
+                manual_weighing = data.get("MANUAL_WEIGHING")
+                if isinstance(manual_weighing, dict):
+                    items = manual_weighing.get("items")
+                    if isinstance(items, list):
+                        target_item: dict[str, Any] | None = None
+
+                        if self._manual_reference_key == "ALL":
+                            for item in items:
+                                if isinstance(item, dict) and isinstance(item.get("status_manual_weigh_read"), dict):
+                                    target_item = item
+                                    break
+                        else:
+                            slot_match = re.fullmatch(r"MANUAL(\d{2})", self._manual_reference_key)
+                            if slot_match:
+                                slot_number = int(slot_match.group(1))
+                                for item in items:
+                                    if not isinstance(item, dict):
+                                        continue
+                                    try:
+                                        item_slot = int(str(item.get("slot")))
+                                    except (TypeError, ValueError):
+                                        continue
+                                    if item_slot == slot_number and isinstance(item.get("status_manual_weigh_read"), dict):
+                                        target_item = item
+                                        break
+
+                        if target_item is not None:
+                            status_field = target_item.get("status_manual_weigh_read")
+                            if isinstance(status_field, dict):
+                                dm = str(status_field.get("DM") or status_field.get("DM - Memory") or "").strip().upper()
+                                match = re.match(r"D(\d+)", dm)
+                                if match:
+                                    self._manual_weighing_status_address = int(match.group(1))
+                                    logger.info(
+                                        "Loaded manual weighing handshake address from MANUAL_REFERENCE.json (MANUAL_WEIGHING): key=%s addr=D%s",
+                                        self._manual_reference_key,
+                                        self._manual_weighing_status_address,
+                                    )
+                                    return
+
                 fields = data.get(self._manual_reference_key, [])
                 if isinstance(fields, list):
                     for field in fields:

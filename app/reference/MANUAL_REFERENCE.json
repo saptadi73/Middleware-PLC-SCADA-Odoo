@@ -1,72 +1,197 @@
 {
-  "MANUAL01": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9000","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9001-D9008"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9009","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9010-D9011","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9012"}
-  ],
-  "MANUAL02": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9100","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9101-D9108"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9109","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9110-D9111","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9112"}
-  ],
-  "MANUAL03": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9200","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9201-D9208"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9209","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9210-D9211","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9212"}
-  ],
-  "MANUAL04": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9300","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9301-D9308"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9309","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9310-D9311","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9312"}
-  ],
-  "MANUAL05": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9400","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9401-D9408"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9409","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9410-D9411","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9412"}
-  ],
-  "MANUAL06": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9500","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9501-D9508"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9509","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9510-D9511","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9512"}
-  ],
-  "MANUAL07": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9600","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9601-D9608"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9609","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9610-D9611","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9612"}
-  ],
-  "MANUAL08": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9700","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9701-D9708"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9709","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9710-D9711","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9712"}
-  ],
-  "MANUAL09": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9800","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9801-D9808"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9809","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9810-D9811","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9812"}
-  ],
-  "MANUAL10": [
-    {"No":1,"Informasi":"BATCH","Data Type":"INT","DM":"D9900","scale":1},
-    {"No":2,"Informasi":"NO-MO","Data Type":"ASCII","DM":"D9901-D9908"},
-    {"No":3,"Informasi":"NO-Product","Data Type":"INT","DM":"D9909","scale":1},
-    {"No":4,"Informasi":"Consumption","Data Type":"REAL","DM":"D9910-D9911","scale":100},
-    {"No":5,"Informasi":"status_manual_weigh_read","Data Type":"BOOLEAN","DM":"D9912"}
-  ]
+  "MANUAL_WEIGHING": {
+    "header": {
+      "batch": {
+        "Data Type": "INT",
+        "DM": "D9000",
+        "scale": 1
+      },
+      "no_mo": {
+        "Data Type": "ASCII",
+        "DM": "D9001-D9008"
+      }
+    },
+    "items": [
+      {
+        "slot": 1,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9009",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9010-D9011",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9012",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 2,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9013",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9014-D9015",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9016",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 3,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9017",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9018-D9019",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9020",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 4,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9021",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9022-D9023",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9024",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 5,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9025",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9026-D9027",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9028",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 6,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9029",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9030-D9031",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9032",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 7,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9033",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9034-D9035",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9036",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 8,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9037",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9038-D9039",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9040",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 9,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9041",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9042-D9043",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9044",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      },
+      {
+        "slot": 10,
+        "product_id": {
+          "Data Type": "INT",
+          "DM": "D9045",
+          "scale": 1
+        },
+        "consumption": {
+          "Data Type": "REAL",
+          "DM": "D9046-D9047",
+          "scale": 100
+        },
+        "status_manual_weigh_read": {
+          "Data Type": "BOOLEAN",
+          "DM": "D9048",
+          "meaning": "0=not read by Middleware, 1=read by Middleware"
+        }
+      }
+    ]
+  }
 }

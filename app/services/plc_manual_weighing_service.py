@@ -65,6 +65,26 @@ class PLCManualWeighingService:
             if manual_reference_path.exists():
                 with open(manual_reference_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+
+                # New structure: MANUAL_WEIGHING with shared header + multiple item slots
+                manual_weighing = data.get("MANUAL_WEIGHING")
+                if isinstance(manual_weighing, dict):
+                    self.layouts = self._build_layouts_from_manual_weighing(manual_weighing)
+                    if self.layouts:
+                        self.mapping = list(self.layouts[0].get("fields", []))
+                        self.mapping_structure = {
+                            "source": "MANUAL_REFERENCE",
+                            "key": self._manual_reference_key,
+                            "loaded_keys": [layout.get("reference_key") for layout in self.layouts],
+                            "format": "MANUAL_WEIGHING",
+                        }
+                        logger.info(
+                            "Loaded PLC manual weighing layouts from MANUAL_REFERENCE.json (MANUAL_WEIGHING): mode=%s loaded=%s",
+                            self._manual_reference_key,
+                            ",".join(str(layout.get("reference_key")) for layout in self.layouts),
+                        )
+                        return
+
                 manual_keys = sorted(
                     key for key in data.keys() if re.fullmatch(r"MANUAL\d{2}", str(key).upper())
                 )
@@ -133,6 +153,89 @@ class PLCManualWeighingService:
             )
         except Exception as e:
             logger.error(f"Error loading manual weighing reference: {e}")
+
+    def _build_layouts_from_manual_weighing(self, section: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Build per-slot layout from MANUAL_WEIGHING structure (shared header + item slots)."""
+        header = section.get("header")
+        items = section.get("items")
+
+        if not isinstance(header, dict) or not isinstance(items, list):
+            logger.warning("MANUAL_WEIGHING format invalid (header/items), skipping")
+            return []
+
+        batch_field = header.get("batch")
+        mo_field = header.get("no_mo")
+        if not isinstance(batch_field, dict) or not isinstance(mo_field, dict):
+            logger.warning("MANUAL_WEIGHING header incomplete (batch/no_mo), skipping")
+            return []
+
+        layouts: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            product_field = item.get("product_id")
+            consumption_field = item.get("consumption")
+            handshake_field = item.get("status_manual_weigh_read")
+            if not isinstance(product_field, dict) or not isinstance(consumption_field, dict) or not isinstance(handshake_field, dict):
+                continue
+
+            slot_raw = item.get("slot")
+            try:
+                slot = int(str(slot_raw))
+            except (TypeError, ValueError):
+                slot = len(layouts) + 1
+
+            if self._manual_reference_key != "ALL":
+                expected_key = f"MANUAL{slot:02d}"
+                if self._manual_reference_key != expected_key:
+                    continue
+
+            try:
+                parsed: Dict[str, Tuple[int, int]] = {}
+                parsed["batch"] = self._parse_dm_address(str(batch_field.get("DM") or ""))
+                parsed["mo"] = self._parse_dm_address(str(mo_field.get("DM") or ""))
+                parsed["product"] = self._parse_dm_address(str(product_field.get("DM") or ""))
+                parsed["consumption"] = self._parse_dm_address(str(consumption_field.get("DM") or ""))
+                parsed["handshake"] = self._parse_dm_address(str(handshake_field.get("DM") or ""))
+
+                min_addr = min(start for start, _ in parsed.values())
+                max_addr = max((start + count - 1) for start, count in parsed.values())
+
+                def _slice_for(name: str) -> Tuple[int, int]:
+                    start, count = parsed[name]
+                    offset = start - min_addr
+                    return (offset, offset + count)
+
+                handshake_index = _slice_for("handshake")[0]
+                reference_key = f"MANUAL{slot:02d}"
+                layout = {
+                    "reference_key": reference_key,
+                    "fields": [batch_field, mo_field, product_field, consumption_field, handshake_field],
+                    "manual_start_addr": min_addr,
+                    "manual_word_count": (max_addr - min_addr) + 1,
+                    "batch_slice": _slice_for("batch"),
+                    "mo_slice": _slice_for("mo"),
+                    "product_slice": _slice_for("product"),
+                    "consumption_slice": _slice_for("consumption"),
+                    "handshake_index": handshake_index,
+                    "handshake_address": min_addr + handshake_index,
+                    "batch_type": str(batch_field.get("Data Type") or "INT"),
+                    "batch_scale": int(batch_field.get("scale") or 1),
+                    "product_type": str(product_field.get("Data Type") or "INT"),
+                    "product_scale": int(product_field.get("scale") or 1),
+                    "consumption_type": str(consumption_field.get("Data Type") or "REAL"),
+                    "consumption_scale": int(consumption_field.get("scale") or 100),
+                }
+                layouts.append(layout)
+            except Exception as exc:
+                logger.warning(
+                    "Failed parsing MANUAL_WEIGHING slot %s: %s",
+                    slot_raw,
+                    exc,
+                )
+
+        return layouts
 
     def _build_layout_from_fields(
         self,
@@ -715,6 +818,17 @@ class PLCManualWeighingService:
                 if not weighing_data:
                     continue
 
+                handshake_address = weighing_data.get("handshake_address")
+                if not self.mark_handshake(
+                    int(handshake_address) if isinstance(handshake_address, (int, float)) else None
+                ):
+                    logger.warning(
+                        "[%s] Failed to mark handshake right after read; skipping this slot to avoid duplicate processing",
+                        slot_key,
+                    )
+                    has_failure = True
+                    continue
+
                 is_valid, error = self.validate_weighing_data(weighing_data)
                 if not is_valid:
                     logger.warning("[%s] Validation failed: %s", slot_key, error)
@@ -726,12 +840,6 @@ class PLCManualWeighingService:
                     logger.error("[%s] Sync failed: %s", slot_key, sync_error)
                     has_failure = True
                     continue
-
-                handshake_address = weighing_data.get("handshake_address")
-                if not self.mark_handshake(
-                    int(handshake_address) if isinstance(handshake_address, (int, float)) else None
-                ):
-                    logger.warning("[%s] Failed to mark handshake, but Odoo sync was successful", slot_key)
 
                 processed_count += 1
 
