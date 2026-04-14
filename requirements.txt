@@ -2,6 +2,7 @@ alembic
 apscheduler
 fastapi
 httpx
+openpyxl
 pydantic
 pydantic-settings
 psycopg2-binary

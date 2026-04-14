@@ -187,8 +187,12 @@ class PLCManualWeighingService:
                 slot = len(layouts) + 1
 
             if self._manual_reference_key != "ALL":
-                expected_key = f"MANUAL{slot:02d}"
-                if self._manual_reference_key != expected_key:
+                expected_keys = {
+                    f"SLOT{slot:02d}",
+                    f"MANUAL{slot:02d}",  # backward compatibility
+                    str(slot),
+                }
+                if self._manual_reference_key not in expected_keys:
                     continue
 
             try:
@@ -208,8 +212,9 @@ class PLCManualWeighingService:
                     return (offset, offset + count)
 
                 handshake_index = _slice_for("handshake")[0]
-                reference_key = f"MANUAL{slot:02d}"
+                reference_key = f"SLOT{slot:02d}"
                 layout = {
+                    "slot": slot,
                     "reference_key": reference_key,
                     "fields": [batch_field, mo_field, product_field, consumption_field, handshake_field],
                     "manual_start_addr": min_addr,
