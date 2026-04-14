@@ -64,6 +64,13 @@ class PLCHandshakeService:
         self._write_status_by_batch: Dict[int, int] = {}
         self._write_mo_field_by_batch: Dict[int, tuple[int, int]] = {}
         self._manual_weighing_status_address = self.MANUAL_WEIGHING_STATUS_ADDRESS
+        self._manual_reference_status: Dict[str, Optional[str] | bool | int] = {
+            "requested_key": self._manual_reference_key,
+            "active_source": "DEFAULT_FALLBACK",
+            "legacy_fallback_used": False,
+            "handshake_address": self._manual_weighing_status_address,
+            "error": None,
+        }
         self._load_read_status_addresses_from_mapping()
         self._load_write_addresses_from_mapping()
         self._load_manual_weighing_status_address_from_mapping()
@@ -209,6 +216,13 @@ class PLCHandshakeService:
         """Load manual weighing handshake address from MANUAL_REFERENCE.json (with legacy fallback)."""
         reference_dir = Path(__file__).parent.parent / "reference"
         manual_reference_path = reference_dir / "MANUAL_REFERENCE.json"
+        self._manual_reference_status = {
+            "requested_key": self._manual_reference_key,
+            "active_source": "DEFAULT_FALLBACK",
+            "legacy_fallback_used": False,
+            "handshake_address": self._manual_weighing_status_address,
+            "error": None,
+        }
 
         try:
             if manual_reference_path.exists():
@@ -247,6 +261,13 @@ class PLCHandshakeService:
                                 match = re.match(r"D(\d+)", dm)
                                 if match:
                                     self._manual_weighing_status_address = int(match.group(1))
+                                    self._manual_reference_status = {
+                                        "requested_key": self._manual_reference_key,
+                                        "active_source": "MANUAL_REFERENCE",
+                                        "legacy_fallback_used": False,
+                                        "handshake_address": self._manual_weighing_status_address,
+                                        "error": None,
+                                    }
                                     logger.info(
                                         "Loaded manual weighing handshake address from MANUAL_REFERENCE.json (MANUAL_WEIGHING): key=%s addr=D%s",
                                         self._manual_reference_key,
@@ -267,6 +288,13 @@ class PLCHandshakeService:
                             continue
 
                         self._manual_weighing_status_address = int(match.group(1))
+                        self._manual_reference_status = {
+                            "requested_key": self._manual_reference_key,
+                            "active_source": "MANUAL_REFERENCE",
+                            "legacy_fallback_used": False,
+                            "handshake_address": self._manual_weighing_status_address,
+                            "error": None,
+                        }
                         logger.info(
                             "Loaded manual weighing handshake address from MANUAL_REFERENCE.json: key=%s addr=D%s",
                             self._manual_reference_key,
@@ -274,10 +302,14 @@ class PLCHandshakeService:
                         )
                         return
 
-                logger.warning(
-                    "status_manual_weigh_read not found for key %s in MANUAL_REFERENCE.json; falling back to legacy reference",
-                    self._manual_reference_key,
+                error_message = (
+                    f"status_manual_weigh_read not found for key {self._manual_reference_key} "
+                    "in MANUAL_REFERENCE.json; legacy fallback is blocked"
                 )
+                self._manual_reference_status["error"] = error_message
+                self._manual_reference_status["handshake_address"] = self._manual_weighing_status_address
+                logger.error(error_message)
+                return
             else:
                 logger.warning(
                     "MANUAL_REFERENCE.json not found at %s; falling back to legacy reference",
@@ -306,6 +338,13 @@ class PLCHandshakeService:
                     continue
 
                 self._manual_weighing_status_address = int(match.group(1))
+                self._manual_reference_status = {
+                    "requested_key": self._manual_reference_key,
+                    "active_source": "ADDITIONAL_EQUIPMENT_REFERENCE",
+                    "legacy_fallback_used": True,
+                    "handshake_address": self._manual_weighing_status_address,
+                    "error": None,
+                }
                 logger.info(
                     "Loaded manual weighing handshake address from ADDITIONAL_EQUIPMENT_REFERENCE.json: D%s",
                     self._manual_weighing_status_address,
@@ -317,11 +356,23 @@ class PLCHandshakeService:
                 self._manual_weighing_status_address,
             )
         except Exception as exc:
+            self._manual_reference_status["error"] = str(exc)
             logger.warning(
                 "Failed loading manual weighing handshake address from reference: %s. Using fallback D%s",
                 exc,
                 self._manual_weighing_status_address,
             )
+
+        self._manual_reference_status["handshake_address"] = self._manual_weighing_status_address
+
+    def reload_manual_weighing_reference(self) -> Dict[str, Optional[str] | bool | int]:
+        self._load_manual_weighing_status_address_from_mapping()
+        return self.get_manual_weighing_reference_status()
+
+    def get_manual_weighing_reference_status(self) -> Dict[str, Optional[str] | bool | int]:
+        status = dict(self._manual_reference_status)
+        status["handshake_address"] = self._manual_weighing_status_address
+        return status
 
     def _parse_dm_range(self, dm_str: str) -> tuple[int, int]:
         """Parse DM string to (start_address, word_count)."""

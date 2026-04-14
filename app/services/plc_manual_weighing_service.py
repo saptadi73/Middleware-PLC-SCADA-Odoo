@@ -4,15 +4,18 @@ Membaca data penimbangan material manual dari PLC menggunakan MANUAL_REFERENCE.j
 Includes handshake logic dan sync ke Odoo material consumption API.
 """
 import json
+import hashlib
 import logging
 import re
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from app.core.config import get_settings
+from app.db.session import SessionLocal
+from app.models.manual_weighing_sync import ManualWeighingSync
 from app.services.fins_client import FinsUdpClient
 from app.services.fins_frames import (
     MemoryReadRequest,
@@ -20,6 +23,7 @@ from app.services.fins_frames import (
     parse_memory_read_response,
 )
 from app.services.plc_handshake_service import get_handshake_service
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +56,40 @@ class PLCManualWeighingService:
         self._product_scale = 1
         self._consumption_type = "REAL"
         self._consumption_scale = 100
+        self.reference_status: Dict[str, Any] = {}
         self._load_reference()
         self.base_url = self.settings.odoo_base_url
         self.handshake_service = get_handshake_service()
-    
+
+    def _reset_reference_state(self) -> None:
+        self.mapping = []
+        self.layouts = []
+        self.mapping_structure = {}
+        self.reference_status = {
+            "requested_key": self._manual_reference_key,
+            "active_source": None,
+            "active_format": None,
+            "legacy_fallback_used": False,
+            "reference_path": None,
+            "loaded_keys": [],
+            "layout_count": 0,
+            "error": None,
+        }
+
+    def _finalize_reference_status(self) -> None:
+        self.reference_status["loaded_keys"] = [
+            str(layout.get("reference_key"))
+            for layout in self.layouts
+            if layout.get("reference_key") is not None
+        ]
+        self.reference_status["layout_count"] = len(self.layouts)
+
     def _load_reference(self):
         """Load MANUAL_REFERENCE.json dan build layout untuk semua slot manual weighing."""
+        self._reset_reference_state()
         reference_dir = Path(__file__).parent.parent / "reference"
         manual_reference_path = reference_dir / "MANUAL_REFERENCE.json"
+        self.reference_status["reference_path"] = str(manual_reference_path)
 
         try:
             if manual_reference_path.exists():
@@ -78,6 +108,9 @@ class PLCManualWeighingService:
                             "loaded_keys": [layout.get("reference_key") for layout in self.layouts],
                             "format": "MANUAL_WEIGHING",
                         }
+                        self.reference_status["active_source"] = "MANUAL_REFERENCE"
+                        self.reference_status["active_format"] = "MANUAL_WEIGHING"
+                        self._finalize_reference_status()
                         logger.info(
                             "Loaded PLC manual weighing layouts from MANUAL_REFERENCE.json (MANUAL_WEIGHING): mode=%s loaded=%s",
                             self._manual_reference_key,
@@ -113,6 +146,9 @@ class PLCManualWeighingService:
                         "key": self._manual_reference_key,
                         "loaded_keys": [layout.get("reference_key") for layout in self.layouts],
                     }
+                    self.reference_status["active_source"] = "MANUAL_REFERENCE"
+                    self.reference_status["active_format"] = "LEGACY_MANUAL_KEYS"
+                    self._finalize_reference_status()
                     logger.info(
                         "Loaded PLC manual weighing layouts from MANUAL_REFERENCE.json: mode=%s loaded=%s",
                         self._manual_reference_key,
@@ -120,19 +156,29 @@ class PLCManualWeighingService:
                     )
                     return
 
-                logger.warning(
-                    "MANUAL_REFERENCE.json exists but no valid layout for mode %s. Falling back to legacy reference.",
-                    self._manual_reference_key,
+                error_message = (
+                    f"MANUAL_REFERENCE.json exists but no valid layout for mode "
+                    f"{self._manual_reference_key}. Legacy fallback is blocked; fix the manual reference file."
                 )
-            else:
-                logger.warning(
-                    "MANUAL_REFERENCE.json not found at %s. Falling back to legacy reference.",
-                    manual_reference_path,
-                )
+                self.reference_status["error"] = error_message
+                self._finalize_reference_status()
+                logger.error(error_message)
+                return
+
+            logger.warning(
+                "MANUAL_REFERENCE.json not found at %s. Falling back to legacy reference.",
+                manual_reference_path,
+            )
 
             legacy_path = reference_dir / "ADDITIONAL_EQUIPMENT_REFERENCE.json"
+            self.reference_status["reference_path"] = str(legacy_path)
             if not legacy_path.exists():
-                logger.warning("ADDITIONAL_EQUIPMENT_REFERENCE.json not found at %s", legacy_path)
+                error_message = (
+                    f"ADDITIONAL_EQUIPMENT_REFERENCE.json not found at {legacy_path}"
+                )
+                self.reference_status["error"] = error_message
+                self._finalize_reference_status()
+                logger.warning(error_message)
                 return
 
             with open(legacy_path, "r", encoding="utf-8") as f:
@@ -145,6 +191,16 @@ class PLCManualWeighingService:
 
             if self.layouts:
                 self._apply_layout(self.layouts[0])
+                self.reference_status["active_source"] = "ADDITIONAL_EQUIPMENT_REFERENCE"
+                self.reference_status["active_format"] = "LEGACY_ADDITIONAL"
+                self.reference_status["legacy_fallback_used"] = True
+                self._finalize_reference_status()
+            else:
+                self.reference_status["legacy_fallback_used"] = True
+                self.reference_status["error"] = (
+                    "Legacy manual weighing reference loaded but produced no valid layout"
+                )
+                self._finalize_reference_status()
 
             logger.info(
                 "Loaded PLC manual weighing mapping from ADDITIONAL_EQUIPMENT_REFERENCE.json: fields=%s layouts=%s",
@@ -152,7 +208,29 @@ class PLCManualWeighingService:
                 len(self.layouts),
             )
         except Exception as e:
+            self.reference_status["error"] = str(e)
+            self._finalize_reference_status()
             logger.error(f"Error loading manual weighing reference: {e}")
+
+    def reload_reference(self) -> Dict[str, Any]:
+        self._load_reference()
+        return self.get_reference_status()
+
+    def get_reference_status(self) -> Dict[str, Any]:
+        status = dict(self.reference_status)
+        if self.layouts:
+            status["layouts"] = [
+                {
+                    "reference_key": str(layout.get("reference_key") or ""),
+                    "manual_start_addr": int(layout.get("manual_start_addr") or 0),
+                    "manual_word_count": int(layout.get("manual_word_count") or 0),
+                    "handshake_address": int(layout.get("handshake_address") or 0),
+                }
+                for layout in self.layouts
+            ]
+        else:
+            status["layouts"] = []
+        return status
 
     def _build_layouts_from_manual_weighing(self, section: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Build per-slot layout from MANUAL_WEIGHING structure (shared header + item slots)."""
@@ -783,6 +861,105 @@ class PLCManualWeighingService:
         except Exception as e:
             logger.error(f"Error marking handshake: {e}")
             return False
+
+    def _build_retry_payload_hash(self, data: Dict[str, Any]) -> str:
+        payload = {
+            "reference_key": str(data.get("reference_key") or ""),
+            "handshake_address": int(data.get("handshake_address") or 0),
+            "batch": int(data.get("batch") or 0),
+            "mo_id": str(data.get("mo_id") or "").strip(),
+            "product_id": int(data.get("product_id") or data.get("product_tmpl_id") or 0),
+            "consumption": round(float(data.get("consumption") or 0.0), 6),
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _find_pending_retry_record(self, data: Dict[str, Any]) -> Optional[ManualWeighingSync]:
+        payload_hash = self._build_retry_payload_hash(data)
+        reference_key = str(data.get("reference_key") or "")
+        handshake_address = int(data.get("handshake_address") or 0)
+
+        session = SessionLocal()
+        try:
+            stmt = (
+                select(ManualWeighingSync)
+                .where(
+                    ManualWeighingSync.payload_hash == payload_hash,
+                    ManualWeighingSync.reference_key == reference_key,
+                    ManualWeighingSync.handshake_address == handshake_address,
+                    ManualWeighingSync.handshake_marked_at.is_(None),
+                )
+                .order_by(ManualWeighingSync.odoo_synced_at.desc())
+            )
+            return session.execute(stmt).scalars().first()
+        except Exception as exc:
+            logger.error("Failed checking manual weighing retry record: %s", exc)
+            return None
+        finally:
+            session.close()
+
+    def _record_successful_sync(self, data: Dict[str, Any]) -> Any:
+        session = SessionLocal()
+        try:
+            record = ManualWeighingSync(
+                reference_key=str(data.get("reference_key") or ""),
+                handshake_address=int(data.get("handshake_address") or 0),
+                batch_no=int(data.get("batch") or 0),
+                mo_id=str(data.get("mo_id") or "").strip(),
+                product_id=int(data.get("product_id") or data.get("product_tmpl_id") or 0),
+                consumption=float(data.get("consumption") or 0.0),
+                payload_hash=self._build_retry_payload_hash(data),
+                status="pending_handshake",
+                odoo_synced_at=datetime.now(timezone.utc),
+            )
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record.id
+        except Exception as exc:
+            session.rollback()
+            logger.error("Failed recording successful manual weighing sync: %s", exc)
+            return None
+        finally:
+            session.close()
+
+    def _mark_retry_completed(self, record_id: Any) -> None:
+        if not record_id:
+            return
+
+        session = SessionLocal()
+        try:
+            record = session.get(ManualWeighingSync, record_id)
+            if record is None:
+                return
+            record.status = "completed"
+            record.handshake_marked_at = datetime.now(timezone.utc)
+            record.last_error = None
+            record.updated_at = datetime.now(timezone.utc)
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.error("Failed marking manual weighing retry completed: %s", exc)
+        finally:
+            session.close()
+
+    def _update_retry_error(self, record_id: Any, error: str) -> None:
+        if not record_id:
+            return
+
+        session = SessionLocal()
+        try:
+            record = session.get(ManualWeighingSync, record_id)
+            if record is None:
+                return
+            record.last_error = error
+            record.updated_at = datetime.now(timezone.utc)
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.error("Failed updating manual weighing retry error: %s", exc)
+        finally:
+            session.close()
     
     def read_and_sync(self) -> bool:
         """
@@ -823,21 +1000,31 @@ class PLCManualWeighingService:
                 if not weighing_data:
                     continue
 
-                handshake_address = weighing_data.get("handshake_address")
-                if not self.mark_handshake(
-                    int(handshake_address) if isinstance(handshake_address, (int, float)) else None
-                ):
-                    logger.warning(
-                        "[%s] Failed to mark handshake right after read; skipping this slot to avoid duplicate processing",
-                        slot_key,
-                    )
-                    has_failure = True
-                    continue
-
                 is_valid, error = self.validate_weighing_data(weighing_data)
                 if not is_valid:
                     logger.warning("[%s] Validation failed: %s", slot_key, error)
                     has_failure = True
+                    continue
+
+                pending_retry = self._find_pending_retry_record(weighing_data)
+                if pending_retry is not None:
+                    logger.warning(
+                        "[%s] Found pending retry after prior Odoo success; skipping Odoo re-sync and retrying handshake only",
+                        slot_key,
+                    )
+                    handshake_address = weighing_data.get("handshake_address")
+                    if not self.mark_handshake(
+                        int(handshake_address) if isinstance(handshake_address, (int, float)) else None
+                    ):
+                        self._update_retry_error(
+                            pending_retry.id,
+                            "Handshake retry failed after prior Odoo success",
+                        )
+                        has_failure = True
+                        continue
+
+                    self._mark_retry_completed(pending_retry.id)
+                    processed_count += 1
                     continue
 
                 sync_ok, sync_error = self.sync_to_odoo(weighing_data)
@@ -846,6 +1033,29 @@ class PLCManualWeighingService:
                     has_failure = True
                     continue
 
+                retry_record_id = self._record_successful_sync(weighing_data)
+                if retry_record_id is None:
+                    logger.error(
+                        "[%s] Odoo sync succeeded but retry marker could not be persisted; duplicate protection is unavailable if handshake fails",
+                        slot_key,
+                    )
+
+                handshake_address = weighing_data.get("handshake_address")
+                if not self.mark_handshake(
+                    int(handshake_address) if isinstance(handshake_address, (int, float)) else None
+                ):
+                    self._update_retry_error(
+                        retry_record_id,
+                        "Odoo sync succeeded but handshake write failed",
+                    )
+                    logger.error(
+                        "[%s] Odoo sync succeeded but failed to mark handshake; this slot may be retried and can duplicate downstream processing",
+                        slot_key,
+                    )
+                    has_failure = True
+                    continue
+
+                self._mark_retry_completed(retry_record_id)
                 processed_count += 1
 
             logger.info(

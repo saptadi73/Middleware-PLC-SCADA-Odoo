@@ -23,6 +23,7 @@ from app.models.tablesmo_batch import TableSmoBatch
 from app.services.mo_history_service import get_mo_history_service
 from app.services.odoo_consumption_service import get_consumption_service
 from app.services.plc_handshake_service import get_handshake_service
+from app.services.plc_manual_weighing_service import get_manual_weighing_service
 from app.services.plc_write_service import get_plc_write_service
 from app.services.table_view_service import get_table_view_service
 from app.services.task1_reset_service import get_task1_reset_service
@@ -277,6 +278,64 @@ async def toggle_scheduler_runtime(payload: SchedulerToggleRequest) -> Any:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to toggle scheduler: {str(exc)}",
+        ) from exc
+
+
+@router.get("/admin/manual-weighing/reference-status")
+async def get_manual_weighing_reference_status() -> Any:
+    """
+    Tampilkan source reference manual weighing yang sedang aktif saat runtime.
+    Berguna untuk memastikan middleware tidak diam-diam memakai legacy reference.
+    """
+    try:
+        manual_service = get_manual_weighing_service()
+        handshake_service = get_handshake_service()
+        return {
+            "status": "success",
+            "data": {
+                "manual_weighing": manual_service.get_reference_status(),
+                "handshake": handshake_service.get_manual_weighing_reference_status(),
+            },
+        }
+    except Exception as exc:
+        logger.exception("Error getting manual weighing reference status: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get manual weighing reference status: {str(exc)}",
+        ) from exc
+
+
+@router.post("/admin/manual-weighing/reference-reload")
+async def reload_manual_weighing_reference() -> Any:
+    """
+    Reload reference manual weighing tanpa restart aplikasi.
+    """
+    try:
+        manual_service = get_manual_weighing_service()
+        handshake_service = get_handshake_service()
+        manual_status = manual_service.reload_reference()
+        handshake_status = handshake_service.reload_manual_weighing_reference()
+
+        logger.info(
+            "Manual weighing reference reloaded: source=%s layouts=%s handshake=D%s",
+            manual_status.get("active_source"),
+            manual_status.get("layout_count"),
+            handshake_status.get("handshake_address"),
+        )
+
+        return {
+            "status": "success",
+            "message": "Manual weighing reference reloaded",
+            "data": {
+                "manual_weighing": manual_status,
+                "handshake": handshake_status,
+            },
+        }
+    except Exception as exc:
+        logger.exception("Error reloading manual weighing reference: %s", str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reload manual weighing reference: {str(exc)}",
         ) from exc
 
 
