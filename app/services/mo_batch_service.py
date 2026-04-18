@@ -195,36 +195,41 @@ def is_mo_batch_empty(db: Session) -> bool:
 def write_mo_batch_queue_to_plc(
     db: Session,
     start_slot: int = 1,
-    limit: int = 30,
+    limit: Optional[int] = None,
 ) -> int:
-    if start_slot < 1 or start_slot > 30:
-        raise ValueError(f"start_slot must be 1-30, got {start_slot}")
+    plc_service = get_plc_write_service()
+    handshake = get_handshake_service()
+    max_slots = plc_service.get_max_batch_slots()
 
-    if limit < 1:
+    if start_slot < 1 or start_slot > max_slots:
+        raise ValueError(f"start_slot must be 1-{max_slots}, got {start_slot}")
+
+    effective_limit = limit if limit is not None else (max_slots - start_slot + 1)
+    if effective_limit < 1:
         return 0
 
     batches = (
         db.query(TableSmoBatch)
         .order_by(TableSmoBatch.batch_no)
-        .limit(limit)
+        .limit(effective_limit)
         .all()
     )
 
-    plc_service = get_plc_write_service()
-    handshake = get_handshake_service()
-
-    plc_ready = handshake.check_write_area_status()
-    if not plc_ready:
-        raise RuntimeError(
-            "Cannot write batch queue: PLC handshake not ready (D7076=0). "
-            "Wait for PLC to read previous data first."
-        )
+    target_slots = list(range(start_slot, min(start_slot + len(batches), max_slots + 1)))
+    for plc_slot in target_slots:
+        slot_ready = handshake.check_write_batch_status(plc_slot)
+        if not slot_ready:
+            raise RuntimeError(
+                f"Cannot write batch queue: PLC handshake not ready for slot {plc_slot}. "
+                "Wait for PLC to read previous data first."
+            )
 
     written = 0
     plc_slot = start_slot
+    written_slots: list[int] = []
     try:
         for batch in batches:
-            if plc_slot > 30:
+            if plc_slot > max_slots:
                 break
 
             consumption_val = cast(Optional[NumericValue], batch.consumption)
@@ -266,11 +271,12 @@ def write_mo_batch_queue_to_plc(
                 skip_handshake_check=True,
             )
             written += 1
+            written_slots.append(plc_slot)
             plc_slot += 1
     finally:
         # If any batch has been written, mark WRITE area as unread by PLC.
-        if written > 0:
-            handshake.reset_write_area_status()
+        if written_slots:
+            handshake.reset_write_area_statuses(written_slots)
 
     return written
 

@@ -105,7 +105,9 @@ async def auto_sync_mo_task():
         for idx, mo in enumerate(mo_list, 1):
             logger.debug(f"[TASK 1-DEBUG-6.{idx}] MO data: mo_id={mo.get('id')}, name={mo.get('name')}")
         
-        max_plc_slots = 30
+        from app.services.plc_write_service import get_plc_write_service
+
+        max_plc_slots = get_plc_write_service().get_max_batch_slots()
         if len(mo_list) > max_plc_slots:
             logger.warning(
                 "[TASK 1] Odoo returned %s MO(s), but PLC supports max %s slots. "

@@ -969,7 +969,7 @@ async def reset_batch_status(
                     skip_handshake_check=True,
                 )
                 # Manual push should still mark WRITE area unread for PLC to consume.
-                handshake.reset_write_area_status()
+                handshake.reset_write_area_status(batch_no=batch.batch_no)
                 plc_sync_status = "success"
             except Exception as plc_exc:
                 plc_sync_status = "failed"

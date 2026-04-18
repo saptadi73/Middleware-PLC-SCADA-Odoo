@@ -268,13 +268,7 @@ class PLCSyncService:
                             plc_batch_no,
                         )
 
-                    if self._is_completed_in_read_payload(plc_data):
-                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
-                    else:
-                        logger.debug(
-                            "Skip READ handshake mark for batch=%s (status_manufacturing!=1)",
-                            plc_batch_no,
-                        )
+                    get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
 
             if processed_batches == 0:
                 return {
@@ -460,13 +454,7 @@ class PLCSyncService:
                             }
                         )
 
-                    if self._is_completed_in_read_payload(plc_data):
-                        get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
-                    else:
-                        logger.debug(
-                            "Skip READ handshake mark for batch=%s (status_manufacturing!=1)",
-                            plc_batch_no,
-                        )
+                    get_handshake_service().mark_read_area_as_read(batch_no=plc_batch_no)
 
             if processed_batches == 0:
                 return {

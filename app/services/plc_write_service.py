@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 class PLCWriteService:
     """Service untuk write data ke PLC menggunakan FINS protocol."""
+
+    DEFAULT_MAX_BATCH_SLOTS = 10
     
     def __init__(self):
         self.settings = get_settings()
@@ -42,6 +44,19 @@ class PLCWriteService:
             self.mapping = json.load(f)
         
         logger.info(f"Loaded PLC memory mapping: {len(self.mapping)} batches")
+
+    def get_max_batch_slots(self) -> int:
+        """Return highest WRITE batch slot available in MASTER_BATCH_REFERENCE."""
+        batch_numbers: list[int] = []
+        for key in self.mapping:
+            match = re.match(r"(?:WRITE_)?BATCH(\d+)$", str(key).strip().upper())
+            if match:
+                batch_numbers.append(int(match.group(1)))
+
+        if batch_numbers:
+            return max(batch_numbers)
+
+        return self.DEFAULT_MAX_BATCH_SLOTS
 
     def _resolve_batch_name(self, batch_name: str) -> str:
         """Resolve mapping key for batch name (supports BATCHxx and WRITE_BATCHxx)."""
@@ -122,6 +137,13 @@ class PLCWriteService:
                 id_fields[silo_number] = info
 
         return id_fields, consumption_fields
+
+    def _extract_batch_number(self, batch_name: str) -> int:
+        resolved_batch_name = self._resolve_batch_name(batch_name)
+        match = re.search(r"BATCH(\d+)$", resolved_batch_name)
+        if not match:
+            raise ValueError(f"Cannot extract batch number from {resolved_batch_name}")
+        return int(match.group(1))
     
     def _convert_to_words(self, value: Any, data_type: str, length: Optional[float] = None, scale: Optional[float] = None, word_count: Optional[int] = None) -> List[int]:
         """
@@ -323,23 +345,26 @@ class PLCWriteService:
             })
         """
         resolved_batch_name = self._resolve_batch_name(batch_name)
+        batch_number = self._extract_batch_number(resolved_batch_name)
         
         # Handshake check: Verify PLC has read previous batch
         if not skip_handshake_check:
             handshake = get_handshake_service()
-            plc_has_read = handshake.check_write_area_status()
+            plc_has_read = handshake.check_write_batch_status(batch_number)
             
             if not plc_has_read:
                 logger.warning(
-                    f"[{resolved_batch_name}] Handshake check failed: PLC hasn't read previous batch yet (D7076=0). "
-                    f"Skipping write to prevent data overwrite. PLC will set D7076=1 when ready."
+                    f"[{resolved_batch_name}] Handshake check failed: PLC hasn't read previous batch slot yet. "
+                    f"Skipping write to prevent data overwrite."
                 )
                 raise RuntimeError(
-                    f"Cannot write {resolved_batch_name}: PLC handshake not ready (D7076=0). "
+                    f"Cannot write {resolved_batch_name}: PLC handshake not ready for slot {batch_number}. "
                     f"Wait for PLC to read current batch first."
                 )
             
-            logger.info(f"[{resolved_batch_name}] Handshake check passed: PLC ready for new batch (D7076=1)")
+            logger.info(
+                f"[{resolved_batch_name}] Handshake check passed: PLC ready for new batch in slot {batch_number}"
+            )
         
         success_count = 0
         error_count = 0
@@ -379,8 +404,10 @@ class PLCWriteService:
         # (indicating Middleware has written new data, PLC should read it)
         if not skip_handshake_check and error_count == 0:
             handshake = get_handshake_service()
-            handshake.reset_write_area_status()  # Set D7076 = 0
-            logger.info(f"[{resolved_batch_name}] Reset handshake flag (D7076=0) - waiting for PLC to read")
+            handshake.reset_write_area_status(batch_no=batch_number)
+            logger.info(
+                f"[{resolved_batch_name}] Reset handshake flag for slot {batch_number} - waiting for PLC to read"
+            )
         
         logger.info(
             f"[{resolved_batch_name}] Write completed: "
@@ -454,10 +481,10 @@ class PLCWriteService:
         
         Args:
             mo_batch_data: Dictionary dengan data dari mo_batch table
-            batch_number: Nomor batch (1-30) yang menentukan BATCH01-BATCH30
+            batch_number: Nomor slot batch PLC aktif sesuai MASTER_BATCH_REFERENCE
         
         Field mapping:
-            - BATCH: Nomor slot batch (1-30)
+            - BATCH: Nomor slot batch PLC aktif
             - NO-MO: Manufacturing Order ID (ASCII 16 chars)
             - NO-BoM: Bill of Materials / Finished Goods (ASCII 16 chars)
             - finished_goods: Nama finished goods (ASCII 16 chars)
@@ -468,8 +495,11 @@ class PLCWriteService:
             - Status Operation: Status operasi (0/1)
             - weight_finished_good: Actual weight hasil (REAL)
         """
-        if batch_number < 1 or batch_number > 30:
-            raise ValueError(f"Batch number must be 1-30, got {batch_number}")
+        max_batch_slots = self.get_max_batch_slots()
+        if batch_number < 1 or batch_number > max_batch_slots:
+            raise ValueError(
+                f"Batch number must be 1-{max_batch_slots}, got {batch_number}"
+            )
         
         batch_name = f"BATCH{batch_number:02d}"
         resolved_batch_name = self._resolve_batch_name(batch_name)
@@ -560,7 +590,7 @@ class PLCWriteService:
         logger.info(
             f"✓ MO batch data written to PLC {resolved_batch_name}: "
             f"mo_id={mo_batch_data.get('mo_id')}, "
-            f"batch={batch_number}/30, "
+            f"batch={batch_number}/{max_batch_slots}, "
             f"fields={len(plc_data)}"
         )
 
@@ -575,3 +605,8 @@ def get_plc_write_service() -> PLCWriteService:
     if _plc_write_service is None:
         _plc_write_service = PLCWriteService()
     return _plc_write_service
+
+
+def get_plc_write_batch_limit() -> int:
+    """Expose active WRITE batch slot limit derived from mapping."""
+    return get_plc_write_service().get_max_batch_slots()

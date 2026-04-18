@@ -28,7 +28,7 @@ from pathlib import Path
 import re
 import socket
 import time
-from typing import Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from app.core.config import get_settings
 from app.services.fins_client import FinsUdpClient
@@ -153,6 +153,76 @@ class PLCHandshakeService:
         except Exception as exc:
             logger.error(f"Error checking WRITE area status: {exc}", exc_info=True)
             # Default to False (safer - don't write if status unknown)
+            return False
+
+    def _get_write_status_address(self, batch_no: int) -> int:
+        """Resolve WRITE status_read_data address for a specific batch slot."""
+        if batch_no < self.READ_BATCH_MIN or batch_no > self.READ_BATCH_MAX:
+            raise ValueError(
+                f"batch_no must be {self.READ_BATCH_MIN}..{self.READ_BATCH_MAX}, got {batch_no}"
+            )
+
+        if batch_no == 1:
+            return self._write_status_by_batch.get(batch_no, self.WRITE_AREA_STATUS_ADDRESS)
+
+        mapped_address = self._write_status_by_batch.get(batch_no)
+        if mapped_address is None:
+            raise ValueError(f"WRITE status_read_data address not found for batch {batch_no}")
+        return mapped_address
+
+    def _is_write_slot_empty(self, batch_no: int) -> bool:
+        """Return True when a specific WRITE slot has no NO-MO payload yet."""
+        slot_info = self._write_mo_field_by_batch.get(batch_no)
+        if slot_info is None:
+            return False
+
+        address, word_count = slot_info
+        words = self._read_words(address, word_count)
+        mo_text = self._decode_ascii_words(words)
+        return not bool(mo_text)
+
+    def check_write_batch_status(self, batch_no: int) -> bool:
+        """
+        Check if a specific WRITE batch slot is ready to be written.
+
+        Returns:
+            True: PLC has read previous data for that slot, or slot is still empty/clean
+            False: PLC has not read previous data yet
+        """
+        try:
+            address = self._get_write_status_address(batch_no)
+            status = self._read_status_flag(address)
+
+            if status == 1:
+                logger.info(
+                    "WRITE slot %s handshake ready (D%s=1). Safe to write.",
+                    batch_no,
+                    address,
+                )
+                return True
+
+            if self._is_write_slot_empty(batch_no):
+                logger.warning(
+                    "WRITE slot %s handshake D%s=0 but slot NO-MO is empty. Treating as READY for initial write.",
+                    batch_no,
+                    address,
+                )
+                return True
+
+            logger.warning(
+                "WRITE slot %s handshake not ready (D%s=0 and NO-MO still occupied).",
+                batch_no,
+                address,
+            )
+            return False
+
+        except Exception as exc:
+            logger.error(
+                "Error checking WRITE slot %s status: %s",
+                batch_no,
+                exc,
+                exc_info=True,
+            )
             return False
 
     def _load_write_addresses_from_mapping(self) -> None:
@@ -656,9 +726,9 @@ class PLCHandshakeService:
         )
         return addresses
     
-    def reset_write_area_status(self) -> bool:
+    def reset_write_area_status(self, batch_no: Optional[int] = None) -> bool:
         """
-        Reset WRITE area status to 0 (for testing purposes).
+        Reset WRITE area status to 0 (mark unread by PLC).
         
         Normally this is done by PLC after it finishes reading.
         
@@ -666,12 +736,41 @@ class PLCHandshakeService:
             True if successfully reset, False otherwise
         """
         try:
-            self._write_status_flag(self.WRITE_AREA_STATUS_ADDRESS, 0)
-            logger.info("Reset WRITE area status (D7076=0)")
+            if batch_no is None:
+                address = self.WRITE_AREA_STATUS_ADDRESS
+                label = "WRITE area"
+            else:
+                address = self._get_write_status_address(batch_no)
+                label = f"WRITE slot {batch_no}"
+
+            self._write_status_flag(address, 0)
+            logger.info("Reset %s status (D%s=0)", label, address)
             return True
         except Exception as exc:
             logger.error(f"Error resetting WRITE area status: {exc}", exc_info=True)
             return False
+
+    def reset_write_area_statuses(self, batch_numbers: list[int]) -> list[int]:
+        """
+        Reset multiple WRITE slot status flags to 0.
+
+        Returns:
+            List of DM addresses that were updated.
+        """
+        written_addresses: list[int] = []
+        for batch_no in sorted(set(batch_numbers)):
+            address = self._get_write_status_address(batch_no)
+            self._write_status_flag(address, 0)
+            written_addresses.append(address)
+
+        if written_addresses:
+            logger.info(
+                "Reset WRITE slot handshake status on %s address(es): %s",
+                len(written_addresses),
+                ", ".join(f"D{address}" for address in written_addresses),
+            )
+
+        return written_addresses
     
     def reset_read_area_status(self, batch_no: int = 1) -> bool:
         """

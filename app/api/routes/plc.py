@@ -11,31 +11,46 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.tablesmo_batch import TableSmoBatch
-from app.services.plc_write_service import get_plc_write_service
+from app.services.plc_write_service import (
+    get_plc_write_batch_limit,
+    get_plc_write_service,
+)
 from app.services.plc_read_service import get_plc_read_service
 from app.services.plc_sync_service import get_plc_sync_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+PLC_WRITE_BATCH_LIMIT = get_plc_write_batch_limit()
 
 
 class PLCWriteFieldRequest(BaseModel):
     """Request model untuk write single field ke PLC."""
-    batch_name: str = Field(..., description="Batch name (BATCH01-BATCH30)")
+    batch_name: str = Field(
+        ...,
+        description=f"Batch name (BATCH01-BATCH{PLC_WRITE_BATCH_LIMIT:02d})",
+    )
     field_name: str = Field(..., description="Field name dari MASTER_BATCH_REFERENCE.json")
     value: Any = Field(..., description="Value to write")
 
 
 class PLCWriteBatchRequest(BaseModel):
     """Request model untuk write multiple fields ke PLC."""
-    batch_name: str = Field(..., description="Batch name (BATCH01-BATCH30)")
+    batch_name: str = Field(
+        ...,
+        description=f"Batch name (BATCH01-BATCH{PLC_WRITE_BATCH_LIMIT:02d})",
+    )
     data: Dict[str, Any] = Field(..., description="Dictionary of field_name: value")
 
 
 class PLCWriteMORequest(BaseModel):
     """Request model untuk write MO batch dari database ke PLC."""
     batch_no: int = Field(..., ge=1, description="Batch number dari mo_batch table")
-    plc_batch_slot: int = Field(default=1, ge=1, le=30, description="PLC batch slot (BATCH01-BATCH30)")
+    plc_batch_slot: int = Field(
+        default=1,
+        ge=1,
+        le=PLC_WRITE_BATCH_LIMIT,
+        description=f"PLC batch slot (BATCH01-BATCH{PLC_WRITE_BATCH_LIMIT:02d})",
+    )
 
 
 @router.post("/plc/write-field")
@@ -130,7 +145,7 @@ async def write_mo_batch_to_plc(
     Process:
     1. Read batch data dari mo_batch table berdasarkan batch_no
     2. Convert data ke format PLC
-    3. Write ke PLC memory slot (BATCH01-BATCH30)
+    3. Write ke PLC memory slot aktif sesuai mapping WRITE
     
     Example:
     ```json
@@ -223,6 +238,7 @@ async def get_plc_config() -> Any:
             "client_node": service.settings.client_node,
             "plc_node": service.settings.plc_node,
             "batches_loaded": len(service.mapping),
+            "write_batch_limit": service.get_max_batch_slots(),
             "read_batches_loaded": len(getattr(read_service, "batch_mappings", {})),
             "read_fields_per_batch": len(getattr(read_service, "mapping", [])),
         },
