@@ -16,6 +16,10 @@ from app.services.plc_write_service import get_plc_write_service
 NumericValue = Union[Decimal, float, int]
 
 
+class WriteBatchQueueNotReadyError(RuntimeError):
+    """Raised when PLC WRITE queue handshake is not ready yet."""
+
+
 def _to_float(value: Optional[NumericValue]) -> float:
     if value is None:
         return 0.0
@@ -219,7 +223,7 @@ def write_mo_batch_queue_to_plc(
     for plc_slot in target_slots:
         slot_ready = handshake.check_write_batch_status(plc_slot)
         if not slot_ready:
-            raise RuntimeError(
+            raise WriteBatchQueueNotReadyError(
                 f"Cannot write batch queue: PLC handshake not ready for slot {plc_slot}. "
                 "Wait for PLC to read previous data first."
             )

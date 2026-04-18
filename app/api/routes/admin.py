@@ -157,8 +157,9 @@ async def reset_task1_start(db: Session = Depends(get_db)) -> Any:
     Prepare TASK 1 to run from the beginning.
 
     Actions:
-    1. Set all WRITE-area status_read_data flags to 1
-    2. Clear all records from mo_batch
+    1. Clear all WRITE-area payload slots in PLC
+    2. Set all WRITE-area status_read_data flags to 1
+    3. Clear all records from mo_batch
     """
     try:
         service = get_task1_reset_service(db)

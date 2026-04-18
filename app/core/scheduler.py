@@ -19,7 +19,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-from app.services.mo_batch_service import sync_mo_list_to_db
+from app.services.mo_batch_service import (
+    WriteBatchQueueNotReadyError,
+    sync_mo_list_to_db,
+)
 from app.services.odoo_auth_service import fetch_mo_list_detailed
 from app.services.plc_sync_service import get_plc_sync_service
 from app.services.mo_history_service import get_mo_history_service
@@ -146,6 +149,12 @@ async def auto_sync_mo_task():
                 f"[TASK 1] ? Auto-sync committed successfully: staged={synced}, written={written}"
             )
             
+        except WriteBatchQueueNotReadyError as exc:
+            db.rollback()
+            logger.warning(
+                "[TASK 1] PLC write skipped this cycle: %s",
+                str(exc),
+            )
         except Exception:
             db.rollback()
             raise

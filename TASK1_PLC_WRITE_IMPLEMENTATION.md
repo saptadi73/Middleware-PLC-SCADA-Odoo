@@ -1,118 +1,48 @@
 # TASK 1 Updated - With PLC WRITE Implementation
 
-## ✓ CONFIRMED: Task 1 Harus WRITE ke PLC
+## Confirmed
 
-**Alasan:**
-- MO dari Odoo adalah "instruksi batch" yang PLC harus execute
-- PLC membaca batch data dari memory (tidak dari network)
-- Setelah PLC selesai execute batch, PLC menulis hasil di memory
-- Task 2 akan membaca hasil tersebut
+TASK 1 memang harus menulis MO confirm dari Odoo ke PLC, karena PLC mengeksekusi batch dari WRITE memory dan Task 2 membaca hasil eksekusinya dari READ memory.
 
-## Task 1 Flow (UPDATED)
+## Task 1 Flow
 
-```
-┌─────────────────────────────────────────┐
-│ TASK 1: Auto-Sync MO + Write to PLC     │
-└─────────────────────────────────────────┘
-         ↓
-    1. Check Queue
-       └→ if NOT empty: skip (tunggu PLC selesai batch saat ini)
-       └→ if empty: continue
-         ↓
-    2. Fetch MO dari Odoo
-       └→ GET /api/mo (MO yang status=open/ready)
-         ↓
-    3. Sync ke Database (mo_batch)
-       └→ INSERT INTO mo_batch (mo_id, consumption, equipment, etc)
-         ↓
-    4. WRITE ke PLC Memory ✓ [NEW]
-       └→ FINS Protocol → Write batch data ke PLC address
-       └→ Batch 1 → Slot 1
-       └→ Batch 2 → Slot 2
-       └→ ... up to Slot 30
-         ↓
-    5. Log & Return
-```
+1. Cek `mo_batch` kosong atau tidak.
+2. Jika kosong, fetch daftar MO confirm dari Odoo.
+3. Stage atau update semua MO hasil fetch ke `mo_batch` dengan deferred commit.
+4. Dalam cycle yang sama, segera tulis semua batch hasil fetch ke PLC WRITE area slot `1..N`.
+5. Commit `mo_batch` hanya jika seluruh penulisan ke PLC sukses penuh.
+6. Jika write PLC gagal, rollback stage database agar DB tidak tertinggal dari state PLC.
 
-## Implementation Details
+## Implemented Behavior
 
-**File Modified:**
-- `app/core/scheduler.py` (lines 40-101)
+- Scheduler memanggil `sync_mo_list_to_db(..., commit=False)` lebih dulu.
+- Setelah itu scheduler memanggil `write_mo_batch_queue_to_plc(...)`.
+- Final `db.commit()` hanya dilakukan jika jumlah batch yang berhasil ditulis ke PLC sama dengan jumlah batch yang di-stage.
 
-**Changes:**
-1. Added step: `write_mo_batch_queue_to_plc(db, start_slot=1, limit=len(mo_list))`
-2. This calls `plc_write_service.write_mo_batch_to_plc()` internally
-3. Each batch written to PLC slot 1-30
+## Important Note
 
-**Code:**
-```python
-# 4. WRITE batch data ke PLC memory
-from app.services.mo_batch_service import write_mo_batch_queue_to_plc
+Urutan yang benar bukan:
 
-written = write_mo_batch_queue_to_plc(db, start_slot=1, limit=len(mo_list))
-logger.info(f"[TASK 1] ✓ PLC write completed: {written} batches written to PLC")
-```
+`fetch Odoo -> commit DB -> write PLC`
 
-## PLC Memory Map (Batch Data per Slot)
+Urutan yang dipakai sekarang adalah:
 
-Each batch slot (1-30) contains:
-- MO ID (string)
-- Equipment ID
-- Finished Goods Name
-- Component/Silo Information (A-M)
-- Consumption data per silo
-- Status flags
+`fetch Odoo -> stage mo_batch -> write semua ke PLC -> commit DB`
 
-**Service Used:** `app.services.plc_write_service.PLCWriteService`
-
-## Complete Task Cycle
-
-```
-ODOO                              Task 1 (UPDATED)
-  ↓ (MO List)                         ↓
-Fetch MOs          →          Save to mo_batch
-                               WRITE to PLC ←── [PLC will execute]
-                                   ↓
-                              Task 2 →→→ READ PLC results
-                                        → Sync consumption to Odoo
-                                        → Save actual_weight, status
-                                   ↓
-                              Task 3 →→→ Process completed batches
-                                        → Archive to mo_histories
-                                        → Clear queue
-                                   ↓
-                         (back to Task 1 when queue empty)
-```
-
-## Testing
-
-**Run:**
-```bash
-python test_task1_with_plc_write.py
-```
-
-**Expected Output:**
-1. ✓ Cleared old batches
-2. ✓ Task 1 fetched N batches from Odoo
-3. ✓ Saved to mo_batch
-4. ✓ Wrote to PLC (check PLC logs for write confirmation)
+Urutan ini menjaga konsistensi agar `mo_batch` tidak committed bila penulisan PLC gagal di tengah jalan.
 
 ## Safety Notes
 
-1. **One batch at a time:** PLC only executes one batch, queue must be clear before Task 1 fetches new
-2. **Atomic operation:** Write to DB first, then write to PLC (if DB fails, PLC write doesn't happen)
-3. **Error handling:** If PLC write fails, batch stays in mo_batch, Task 1 will retry next cycle
-4. **Max 30 batches:** PLC memory has 30 slots, limit enforced in `write_mo_batch_queue_to_plc()`
+- Task 1 hanya berjalan saat `mo_batch` kosong.
+- Handshake WRITE slot dipakai untuk mencegah overwrite data yang belum dibaca PLC.
+- Bila satu slot belum ready, cycle write dianggap belum aman untuk diselesaikan.
+- Bila write gagal sebelum final commit, perubahan `mo_batch` di-rollback.
 
-## Verification
+## Verification Target
 
-Check PLC write success by:
-1. Monitor Task 1 logs: `[TASK 1] ✓ PLC write completed: X batches`
-2. Check PLC memory addresses (via PLC monitoring tool)
-3. Wait for Task 2 to read and report results
+Log sukses Task 1 idealnya memperlihatkan urutan ini:
 
-## Status
-
-✓ Implementation complete
-✓ Test script created
-⏳ Ready for testing
+1. Odoo mengembalikan `N` MO.
+2. `mo_batch` stage selesai untuk `N` MO.
+3. PLC write selesai untuk `N` batch.
+4. Commit database sukses untuk `N` batch.

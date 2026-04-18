@@ -113,6 +113,14 @@ class PLCWriteService:
             return 100 + raw_number
         return raw_number
 
+    def _coalesce_default(self, value: Any, default: Any) -> Any:
+        """Return default when source value is None or empty string."""
+        if value is None:
+            return default
+        if isinstance(value, str) and value.strip() == "":
+            return default
+        return value
+
     def _build_silo_field_maps(self, batch_name: str) -> tuple[Dict[int, str], Dict[int, str]]:
         resolved_batch_name = self._resolve_batch_name(batch_name)
         id_fields: Dict[int, str] = {}
@@ -144,6 +152,30 @@ class PLCWriteService:
         if not match:
             raise ValueError(f"Cannot extract batch number from {resolved_batch_name}")
         return int(match.group(1))
+
+    def _get_batch_word_span(self, batch_name: str) -> tuple[int, int]:
+        """Return contiguous PLC word span covering one WRITE batch slot."""
+        resolved_batch_name = self._resolve_batch_name(batch_name)
+        min_address: int | None = None
+        max_address: int | None = None
+
+        for item in self.mapping.get(resolved_batch_name, []):
+            dm_str = str(item.get("DM") or "").strip()
+            if not dm_str:
+                continue
+
+            start, word_count = self._parse_dm_address(dm_str)
+            end = start + word_count - 1
+
+            if min_address is None or start < min_address:
+                min_address = start
+            if max_address is None or end > max_address:
+                max_address = end
+
+        if min_address is None or max_address is None:
+            raise ValueError(f"Batch span not found in mapping for {resolved_batch_name}")
+
+        return min_address, (max_address - min_address + 1)
     
     def _convert_to_words(self, value: Any, data_type: str, length: Optional[float] = None, scale: Optional[float] = None, word_count: Optional[int] = None) -> List[int]:
         """
@@ -369,6 +401,7 @@ class PLCWriteService:
         success_count = 0
         error_count = 0
         skipped_count = 0
+        failed_fields: list[str] = []
         
         logger.info(f"[{resolved_batch_name}] Writing {len(data)} fields to PLC...")
         
@@ -398,7 +431,28 @@ class PLCWriteService:
                     f"[{resolved_batch_name}] Error writing field '{field_name}' with value {value}: {exc}",
                     exc_info=True
                 )
+                if self._is_retryable_write_error(exc):
+                    logger.warning(
+                        "[%s] Retrying field '%s' once after transient PLC error.",
+                        resolved_batch_name,
+                        field_name,
+                    )
+                    time.sleep(0.2)
+                    try:
+                        self.write_field(resolved_batch_name, field_name, value)
+                        success_count += 1
+                        continue
+                    except Exception as retry_exc:
+                        logger.error(
+                            f"[{resolved_batch_name}] Retry failed for field '{field_name}' with value {value}: {retry_exc}",
+                            exc_info=True
+                        )
+                        exc = retry_exc
+
                 error_count += 1
+                failed_fields.append(field_name)
+                # Stop immediately to reduce partial writes within the same slot
+                break
         
         # After successful write, reset handshake flag to 0
         # (indicating Middleware has written new data, PLC should read it)
@@ -418,9 +472,18 @@ class PLCWriteService:
         
         if error_count > 0:
             raise RuntimeError(
-                f"Failed to write {resolved_batch_name}: {error_count} field(s) failed. "
-                f"Check logs for details."
+                f"Failed to write {resolved_batch_name}: {error_count} field(s) failed "
+                f"({', '.join(failed_fields)}). Check logs for details."
             )
+
+    def _is_retryable_write_error(self, exc: Exception | None) -> bool:
+        """Return True when the write error looks transient and worth retrying."""
+        current = exc
+        while current is not None:
+            if "timeout" in str(current).lower():
+                return True
+            current = current.__cause__ if isinstance(current, Exception) else None
+        return False
     
     def _write_to_plc(self, address: int, values: List[int]) -> None:
         """
@@ -532,10 +595,17 @@ class PLCWriteService:
             if silo_id_field:
                 if silo_number in silo_number_to_letter:
                     letter = silo_number_to_letter[silo_number]
-                    silo_value = mo_batch_data.get(f"silo_{letter}", silo_number)
+                    silo_value = self._coalesce_default(
+                        mo_batch_data.get(f"silo_{letter}"),
+                        silo_number,
+                    )
                 else:
                     id_key = liquid_field_names.get(silo_number, (None, None))[0]
-                    silo_value = mo_batch_data.get(id_key, silo_number) if id_key else silo_number
+                    silo_value = (
+                        self._coalesce_default(mo_batch_data.get(id_key), silo_number)
+                        if id_key
+                        else silo_number
+                    )
                 plc_data[silo_id_field] = silo_value
                 logger.debug(f"Set {silo_id_field} = {silo_value}")
             else:
@@ -564,7 +634,7 @@ class PLCWriteService:
         for item in self.mapping.get(resolved_batch_name, []):
             info = item.get("Informasi", "").lower()
             
-            if "status" in info and "manufacturing" in info:
+            if "status" in info and ("manufacturing" in info or "manufaturing" in info):
                 plc_data[item["Informasi"]] = False
                 logger.debug(f"Set status field: {item['Informasi']} = {plc_data[item['Informasi']]}")
             
@@ -593,6 +663,40 @@ class PLCWriteService:
             f"batch={batch_number}/{max_batch_slots}, "
             f"fields={len(plc_data)}"
         )
+
+
+    def clear_batch_slot(self, batch_number: int) -> tuple[int, int]:
+        """Clear one WRITE batch slot by zeroing its full PLC word span."""
+        max_batch_slots = self.get_max_batch_slots()
+        if batch_number < 1 or batch_number > max_batch_slots:
+            raise ValueError(
+                f"Batch number must be 1-{max_batch_slots}, got {batch_number}"
+            )
+
+        resolved_batch_name = self._resolve_batch_name(f"BATCH{batch_number:02d}")
+        start_address, word_count = self._get_batch_word_span(resolved_batch_name)
+        self._write_to_plc(start_address, [0] * word_count)
+        logger.info(
+            "Cleared PLC WRITE slot %s at D%s..D%s",
+            batch_number,
+            start_address,
+            start_address + word_count - 1,
+        )
+        return start_address, word_count
+
+    def clear_all_batch_slots(self) -> list[dict[str, int]]:
+        """Clear all mapped WRITE batch slots."""
+        cleared: list[dict[str, int]] = []
+        for batch_number in range(1, self.get_max_batch_slots() + 1):
+            start_address, word_count = self.clear_batch_slot(batch_number)
+            cleared.append(
+                {
+                    "batch_number": batch_number,
+                    "start_address": start_address,
+                    "word_count": word_count,
+                }
+            )
+        return cleared
 
 
 # Singleton instance

@@ -33,7 +33,7 @@ ATURAN STATUS (PENTING)
    untuk batch yang SUDAH selesai (status_manufacturing=1) saat dibaca.
 
 ============================================================
-TASK 1 - AUTO SYNC ODOO -> DB -> PLC WRITE
+TASK 1 - AUTO SYNC ODOO -> STAGE DB -> PLC WRITE -> COMMIT DB
 ============================================================
 Tujuan:
 - Ambil daftar MO dari Odoo
@@ -44,14 +44,15 @@ Alur:
 1. Cek mo_batch kosong/tidak.
    - Jika tidak kosong: skip (tunggu batch aktif selesai).
 2. Fetch MO list dari Odoo.
-3. Stage ke mo_batch (deferred commit).
-4. Write queue ke PLC WRITE area (slot batch 1..N).
-5. Commit DB hanya jika write sukses penuh.
+3. Stage/update semua MO ke mo_batch (deferred commit, belum final commit).
+4. Segera write semua batch hasil fetch ke PLC WRITE area (slot 1..N) dalam cycle yang sama.
+5. Commit mo_batch hanya jika seluruh write PLC sukses penuh.
 6. Handshake D7076 dipakai untuk mencegah overwrite data belum dibaca PLC.
 
 Catatan:
 - Field mapping WRITE mengikuti MASTER_BATCH_REFERENCE.json.
 - Status default di WRITE dipaksa 0 oleh middleware.
+- Urutan implementasi yang diinginkan: fetch Odoo -> stage mo_batch -> write seluruh queue ke PLC -> commit DB.
 
 ============================================================
 TASK 2 - PLC READ -> UPDATE mo_batch
