@@ -69,13 +69,6 @@ class BatchConsumptionRequest(BaseModel):
         description="Batch data dengan consumption dan status",
     )
 
-
-@router.get("/health")
-async def health():
-    """Health check endpoint."""
-    return {"status": "ok"}
-
-
 @router.post("/scada/mo-list-detailed")
 async def mo_list_detailed(
     limit: int = Query(10, ge=1, le=200),
